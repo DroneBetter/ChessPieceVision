@@ -31,3 +31,7 @@ Start while holding 'B' (for Ben). There's a queen that remains still on d5, you
 
 # TODO
 Implement the 'Connection Node Beginnings Index' list, which will allow (in either the Mobility or Moves from Origin mode, which sometimes find shorter paths to squares that reduce not just their 'moves from origin' value but also that of all those a move away that have a greater such value) reading through the indexed part a list instead of recomputing the moves.
+
+# Credits
+[@failedxyz](https://scratch.mit.edu/users/failedxyz) on Scratch for the only implementation of the Sieve of Atkin I found, used in the huygens (speed isn't very necessary because primes are computed prior).
+[User:Cburnett](https://en.wikipedia.org/wiki/User:Cburnett) on Wikipedia for the chess piece .svg's.

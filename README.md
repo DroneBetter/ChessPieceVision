@@ -29,16 +29,16 @@ Press 'V' at any point to make it solve the problem with a bidirectional breadth
 5. Nightrider (knight that can move arbitrarily far in a direction per move, like a queen but knight moves instead of king ones)
 6. Rose (nightrider that switches forwards or backwards through the eight possible knight moves, meaning it can move from its origin to one of 7 other positions in 8 octagons instead of to one of 8 spaces)
 7. Huygens (moves as rook but only looks at squares a prime-numbered distance away)
-8. unnamed Fibonacci piece (Huygens but Fibonacci distances instead of prime)
-9. unnamed atan(φ^x) piece I made (moves as Fibonacci but at each orthogonal step can either proceed as usual or switch to 'diagonal' moves, increasing the position in the Fibonacci list of the perpendicular component by the same amount as the parallel, named because for x orthogonal moves before switching to 'diagonal' the angle of each successive move's destination from the origin (or indeed the previous one, the discrete derivative is by definition two steps behind the current value) will converge towards the equation's output)
+8. Fibonacci rook (Huygens but Fibonacci distances instead of prime)
+9. atan(φ^x) piece I made (moves as Fibonacci but at each orthogonal step can either proceed as usual or switch to 'diagonal' moves, increasing the position in the Fibonacci list of the perpendicular component by the same amount as the parallel, named because for x orthogonal moves before switching to 'diagonal' the angle of each successive move's destination from the origin (or indeed the previous one, the discrete derivative is by definition two steps behind the current value) will converge towards the equation's output)
 10. Queen
 
 # TODO
-Implement the 'Connection Node Beginnings Index' list, which will allow (in either the Mobility or Moves from Origin mode, when they find shorter paths to squares that reduce not just their 'moves from origin' value but also that of all those a move away that have a greater such value) reading through the indexed part a list instead of recomputing the moves. Would also speed up all pathfinding algorithms used to solve the queen-knight problem significantly.
+Implement the 'Connection Node Beginnings Index' list, which will allow (in either the Mobility or Moves from Origin mode, when they find shorter paths to squares that reduce not just their 'moves from origin' value but also that of all those a move away that have a greater such value) reading through the indexed part a list instead of recomputing the moves. Would also speed up all pathfinding algorithms used to solve the queen-knight problem significantly, and breadth-first search would no longer have the problem of expanding rightwards unreasonably (because rightwards moves compute the descendant's moves later in the same passthrough).
 
 # Credits
 [@failedxyz](https://scratch.mit.edu/users/failedxyz) on Scratch for the only [implementation of the Sieve of Atkin](https://scratch.mit.edu/projects/17456670/) I found there, used in the huygens (speed isn't very necessary because primes are computed prior).
 
-[User:Cburnett](https://en.wikipedia.org/wiki/User:Cburnett) on Wikipedia for the chess piece .svg's.
+[User:Cburnett](https://en.wikipedia.org/wiki/User:Cburnett) on Wikipedia for the [SVG chess pieces](https://commons.wikimedia.org/wiki/Category:SVG_chess_pieces).
 
 [Simon](https://stackoverflow.com/users/827753/simon) on StackOverflow for the [O(1) function for finding knight moves to destination on an infinite plane](https://stackoverflow.com/a/41704071).

@@ -34,7 +34,7 @@ Press 'V' at any point to make it solve the problem with a bidirectional breadth
 10. Queen
 
 # TODO
-Implement the 'Connection Node Beginnings Index' list, which will allow (in either the Mobility or Moves from Origin mode, which sometimes find shorter paths to squares that reduce not just their 'moves from origin' value but also that of all those a move away that have a greater such value) reading through the indexed part a list instead of recomputing the moves.
+Implement the 'Connection Node Beginnings Index' list, which will allow (in either the Mobility or Moves from Origin mode, when they find shorter paths to squares that reduce not just their 'moves from origin' value but also that of all those a move away that have a greater such value) reading through the indexed part a list instead of recomputing the moves. Would also speed up all pathfinding algorithms used to solve the queen-knight problem significantly.
 
 # Credits
 [@failedxyz](https://scratch.mit.edu/users/failedxyz) on Scratch for the only [implementation of the Sieve of Atkin](https://scratch.mit.edu/projects/17456670/) I found there, used in the huygens (speed isn't very necessary because primes are computed prior).

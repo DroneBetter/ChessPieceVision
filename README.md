@@ -1,5 +1,5 @@
 # Chess Piece Vision
-A Scratch program to display chessboards based on the moves of pieces.
+A Scratch program to display chessboards and many other things as Eulerian graphs for topological manifolds.
 
 Run in the browser at https://turbowarp.org/551121474?hqpen&offscreen
 
@@ -31,10 +31,16 @@ Press `V` at any point to make it solve the problem with a bidirectional breadth
 Hold `M` to begin. Minecraft mode has a board of the size determined by the slider, connected by king moves, but each 8\*8 region is connected to its own Nether node. Nether nodes are themselves connected to each other. Connections between cells don't correspond with widths of Minecraft blocks but with the distance such that travelling across them is as 'difficult' as moving to your current position in the Nether or back. This program represents Euclidean space's curvature in discrete graphs such that the most direct route corresponds as accurately as possible with the route through fewest edges. Excluding vertical motion (which isn't mapped, but world heights are negligible compared to width), Minecraft takes place in a 2-layer-high Nil manifold, meaning it's hyperbolic.
 
 ### Terraria mode
-Hold `T` to begin, creates board of king moves also, but rectangular and corresponding with the game's world sizes (but scaled down). You can input the teleporting items the observer has, like the magic mirror (which allows them to teleport to the origin from any location), these correspond with additional connections, manifolds get corrugated, but the curves' scales increase over time.
+Hold `T` to begin, creates board of king moves also, but rectangular and corresponding with the game's world sizes (but scaled down). The king has items (configured in the Terraria function), like the magic mirror (which allows it to teleport to the origin from any location), these correspond with asymmetrical connections, the board corrugates, combinations of teleporting items create more complicated manifolds.
 
-### Assembly Line mode
+### Assembly Line mode
 Hold `A` to begin, simulates the item crafting tree in the Android game Assembly Line (with bidirectional connections, to prevent the non-material ones from flying away infinitely far), minimum-energy states in 2 and 3 dimensions push the processed versions raw materials that aren't themselves materials in recipes to the outside, circuits seem to be furthest inside due to their 16 connections, batteries are further out than water heaters in 2D (because, despite batteries having 10 connections against 3, heater plates connect the otherwise disparate aluminium plates, diamond plates and heater plates).
+
+### Quaternion mode
+Hold `Q` to begin, it first creates (1,0,0,0), then finds its product with each positive quaternion basis vector (in the imaginary axes), connecting it to each and creating those that are missing, then it moves on to the next value in the list (positive i) that it created in the search from 1, it continues until it has iterated over each one generated, for all eight nodes and twenty-four connections, you can see how multiplication by each corresponds to motion through loops (to convey that it's a continuum, connections are direct paths through spherical space, not Cartesian). I would have made it a separate program because it isn't chess, but most other special modes aren't chess either, and I had already added quaternion multiplication functions for rotation in this program.
+
+### Quotient space modes
+In the modes with connections on rectangular boards (including the default chess mode), by default pieces stop moving at edges, but for non-iterative ones (ie. knight and king, not rook or bishop), you can make them scroll, causing the minimum-energy manifold to change dramatically. Hold `P` on startup for regular (cylindrical horizontal scrolling or `O` for inversive (Möbius strip). The same applies to vertically with `I` and `U` (on different columns because my keyboard doesn't recognise multiple being pressed simultaneously on the same column), and you can use `Y` to make the top side connect to the right and the bottom to the left instead (for the topological sphere). Most clearly on king moves, `P` and `I` make a torus, `P` and `U` make a Klein bottle, `O` and `U` make a real projective plane (that looks like the Roman surface immersion), `P`, `I` and `Y` make a topological sphere (more lemon-shaped, an artefact of the square board, with interesting manifolds at the ends, an artefact of the discrete simulation), `P`, `U` and `Y` make something similar but with directed connections that make it spin, and `O`, `U` and `Y` make a samosa-looking thing (frankly delicious). Toroidal scrolling on knight moves on a 4\*4 board has four connections per node (eight in total, but each can be reflected about its long axis to end up at the same destination) and sixteen nodes, and is rotationally symmetrical about each, so is an immersion of a tesseract in 3D.
 
 ## Chess pieces implemented
 0. Knight
@@ -50,7 +56,7 @@ Hold `A` to begin, simulates the item crafting tree in the Android game Assembly
 10. Queen
 
 ## Credits
-[@failedxyz](https://scratch.mit.edu/users/failedxyz) on Scratch for the only [implementation of the Sieve of Atkin](https://scratch.mit.edu/projects/17456670/) I found there, used in the huygens (speed isn't very necessary because primes are computed prior).
+[@failedxyz](https://scratch.mit.edu/users/failedxyz) on Scratch for the only [implementation of the Sieve of Atkin](https://scratch.mit.edu/projects/17456670/) I found there, used to generate moves for the huygens (speed isn't very necessary because primes are computed prior).
 
 [User:Cburnett](https://en.wikipedia.org/wiki/User:Cburnett) on Wikipedia for the [SVG chess pieces](https://commons.wikimedia.org/wiki/Category:SVG_chess_pieces).
 

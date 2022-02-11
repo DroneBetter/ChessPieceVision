@@ -39,26 +39,26 @@ def findPieceMoves(piece,position): #outputs list of squares to which piece can 
         return precomputedKnightMoves[position]
         #xMovement=max(xPosition-boardWidth+3,0) if xPosition>1 else -1-(xPosition==0) #removed because I realised it doesn't work with 3*3 boards (where it's both 1 and -1)
         sideObstructions=[max(2-xPosition,0),max(xPosition-boardWidth+3,0),(position<2*boardWidth)*(1+(position<boardWidth)),(position>=boardSquares-2*boardWidth)*(1+(position>=boardSquares-boardWidth))] #directions [left,right,down,up], 0 is unobstructed, 1 is next to edge, 2 is on edge
-        #if sideObstructions[0]<2: #this part not finished due to inelegance (and using maximum 12 list lookups (you can do it in 8 if you're willing to repeat statements more, but I can't find an efficient way to do '(do c and (b if d)) if a else (b if e)' ))
-            #if sideObstructions[3]==0:
-                #moves+=(-1,-2)
-            #if sideObstructions[4]==0:
-                #moves+=(-1,2)
-            #if sideObstructions[0]==0:
-                #if sideObstructions[3]<2:
-                    #moves+=(-2,-1)
-                #if sideObstructions[4]<2:
-                    #moves+=(-2,1)
-        #if sideObstructions[1]<2:
-            #if sideObstructions[3]==0:
-                #moves+=(1,2)
-            #if sideObstructions[4]==0:
-                #moves+=(1,-2)
-            #if sideObstructions[1]==0:
-                #if sideObstructions[3]<2:
-                    #moves+=(2,1)
-                #if sideObstructions[4]<2:
-                    #moves+=(2,-1)
+    ''''if sideObstructions[0]<2:
+            if sideObstructions[3]==0:
+                moves+=(-1,-2)
+            if sideObstructions[4]==0:
+                moves+=(-1,2)
+            if sideObstructions[0]==0:
+                if sideObstructions[3]<2:
+                    moves+=(-2,-1)
+                if sideObstructions[4]<2:
+                    moves+=(-2,1)
+        if sideObstructions[1]<2:
+            if sideObstructions[3]==0:
+                moves+=(1,2)
+            if sideObstructions[4]==0:
+                moves+=(1,-2)
+            if sideObstructions[1]==0:
+                if sideObstructions[3]<2:
+                    moves+=(2,1)
+                if sideObstructions[4]<2:
+                    moves+=(2,-1)''' #this part not finished due to inelegance (and using maximum 12 list lookups (you can do it in 8 if you're willing to repeat statements more, but I can't find an efficient way to do '(do c and (b if d)) if a else (b if e)' ))
     return moves
 
 
@@ -70,10 +70,10 @@ for i in range(boardSquares):
         if not (i==j or j in iKingMoves):
             statesWithoutTurns.append([[(1 if k==i or k==j else 0),(1 if k==j else 0)] for k in range(boardSquares)]) #each square in each state list (in the list of them) is a list of the piece and its colour
             attackedSquares=[]
-            for k in range(len(statesWithoutTurns[-1])): #cannot be list comprehension because it references the list as it constructs it (I am greatly saddened)
-                for l in findPieceMoves(statesWithoutTurns[-1][k][0],k):
-                    if [l,statesWithoutTurns[-1][k][1]] not in attackedSquares:
-                        attackedSquares.append([l,statesWithoutTurns[-1][k][1]]) #will have to be made more complicated if pawns added
+            for k,s in enumerate(statesWithoutTurns[-1]): #cannot be list comprehension because it references the list as it constructs it (I am greatly saddened)
+                for l in findPieceMoves(s[0],k):
+                    if [l,s[1]] not in attackedSquares:
+                        attackedSquares.append([l,s[1]]) #will have to be made more complicated if pawns added
                 #print(attackedSquares)
             #[0,0] is empty, [1,0] is white, [1,1] is black (I will eventually find how to make lists of bits to speed it up (like bitboards))
             stateSquareAttacks.append([[int([k,l] in attackedSquares) for l in range(2)] for k in range(boardSquares)]) #[0,0] is empty, [1,0] white, [0,1] black, [1,1] both
@@ -82,10 +82,9 @@ states=[[j,i] for j in range(2) for i in statesWithoutTurns] #each state is form
 #print(len(states),"states:",states)
 stateSquareAttacks=[i for j in range(2) for i in stateSquareAttacks] #state formatted [[attacked by white?,attacked by black?] for square in range(boardSquares)] #get a load of the comments' opening square brackets' kerning
 #print(len(stateSquareAttacks),"state square attacks:",stateSquareAttacks)
-stateMoves=[[[j for j in findPieceMoves(states[s][1][i][0],i) if states[s][1][i][0]!=1 or stateSquareAttacks[s][j][1-states[s][0]]==0] if (states[s][1][i][1]==states[s][0]) else [] for i in range(boardSquares)] for s in range(len(states))] #is list of lists of destination squares for each piece #the i list comprehension if statement would have (s[1][i][0]!=0 and ) but is now superseded by findPieceMoves
+stateMoves=[[[j for j in findPieceMoves(s[1][i][0],i) if s[1][i][0]!=1 or stateSquareAttacks[a][j][1-s[0]]==0] if (s[1][i][1]==s[0]) else [] for i in range(boardSquares)] for a,s in enumerate(states)] #is list of lists of destination squares for each piece #the i list comprehension if statement would have (s[1][i][0]!=0 and ) but is now superseded by findPieceMoves
 #print(len(stateMoves),"state moves:",stateMoves)
-
-stateTransitions=[[states.index([(1-states[s][0]),[[0,0] if k==i else (states[s][1][i] if k==stateMoves[s][i][j] else states[s][1][k]) for k in range(len(states[s][1]))]]) for i in range(len(stateMoves[s])) for j in range(len(stateMoves[s][i]))] for s in range(len(states))]
+stateTransitions=[[states.index([(1-t[0]),[[0,0] if k==i else (t[1][i] if k==p else r) for k,r in enumerate(t[1])]]) for i,q in enumerate(stateMoves[s]) for j,p in enumerate(q)] for s,t in enumerate(states)]
 print("transitions between",len(states),"states:",stateTransitions)
 
 def underline(input): #from https://stackoverflow.com/a/71034895
@@ -94,8 +93,8 @@ def underline(input): #from https://stackoverflow.com/a/71034895
 def printBoard(board):
     output=""
     stateToPrint=""
-    for i in range(len(board)):
-        letter=pieceSymbols[board[i][1]][board[i][0]]
+    for i,s in enumerate(board):
+        letter=pieceSymbols[s[1]][s[0]]
         if (i%boardWidth+math.floor(i/boardWidth))%2==1: #light square
             letter=underline(letter)
         stateToPrint+=letter
@@ -118,20 +117,20 @@ clickDone=0
 boardLastPrinted=0
 rad=size[0]/len(states)
 #bitColours=[[int(255*(math.cos((j/n-i/3)*2*math.pi)+1)/2) for i in range(3)] for j in range(n)]
-squares=[[[[s*rad,0],[size[1]/2,random.random()/2**8]],[rad]*2,1, squareColours[states[s][0]]] for s in range(len(states))]
+squares=[[[[s*rad,0],[size[1]/2,random.random()/2**8]],[rad]*2,1, squareColours[t[0]]] for s,t in enumerate(states)]
 dims=2
 FPS=60
 drag=0.1
 gravitationalConstant=-(size[0]/10)/(len(squares)/64)**2
 hookeStrength=1/size[0]
 def physics():
-    for i in range(len(squares)):
+    for i in squares:
         if drag>0:
-            absVel=max(1,math.sqrt(sum([squares[i][0][di][1]**2 for di in range(dims)]))) #each dimension's deceleration from drag is its magnitude as a component of the unit vector of velocity times absolute velocity squared, is actual component times absolute velocity.
+            absVel=max(1,math.sqrt(sum([i[0][di][1]**2 for di in range(dims)]))) #each dimension's deceleration from drag is its magnitude as a component of the unit vector of velocity times absolute velocity squared, is actual component times absolute velocity.
             for di in range(dims):
-                squares[i][0][di][1]*=1-absVel*drag #air resistance
+                i[0][di][1]*=1-absVel*drag #air resistance
         for di in range(dims):
-            squares[i][0][di][0]+=squares[i][0][di][1]
+            i[0][di][0]+=i[0][di][1]
     for i in range(len(squares)-1):
         for j in range(i+1,len(squares)):
             differences=[squares[j][0][di][0]-squares[i][0][di][0] for di in range(dims)]
@@ -139,6 +138,13 @@ def physics():
             for di in range(dims):
                 squares[i][0][di][1]+=differences[di]*(hookeStrength*(j in stateTransitions[i])+gravity*squares[j][2])
                 squares[j][0][di][1]-=differences[di]*(hookeStrength*(i in stateTransitions[j])+gravity*squares[i][2])
+''''for i,k in enumerate(squares[:-1]):
+        for j,l in enumerate(squares[i:]):
+            differences=[l[0][di][0]-k[0][di][0] for di in range(dims)]
+            gravity=gravitationalConstant/max(1,math.sqrt(sum([di**2 for di in differences])**3))
+            for di in range(dims):
+                k[0][di][1]+=differences[di]*(hookeStrength*(j in stateTransitions[i])+gravity*l[2])
+                l[0][di][1]-=differences[di]*(hookeStrength*(i in stateTransitions[j])+gravity*k[2])''' #doesn't seem to work (I think because enumerate's indices are on the output list, not the intput)
 def drawShape(size,pos,colour,shape):
     color=(colour[0],colour[1],colour[2])
     if shape==0:
@@ -167,12 +173,12 @@ while run:
     mouse=pygame.mouse.get_pos()
     physics()
     screen.fill(black)
-    for i in range(len(stateTransitions)):
-        for j in range(len(stateTransitions[i])):
-            drawLine(squareScreenPositions[i],squareScreenPositions[stateTransitions[i][j]],squareColours[states[i][0]])
-    for i in range(len(squares)):
-        drawShape(squares[i][1],squareScreenPositions[i],squares[i][3],1)
-        if actualClickDone and i!=boardLastPrinted and sum([(squareScreenPositions[i][di]-mouse[di])**2 for di in range(dims)])<squares[i][1][0]**2:
+    for i,k in enumerate(stateTransitions):
+        for j,l in enumerate(k):
+            drawLine(squareScreenPositions[i],squareScreenPositions[l],squareColours[states[i][0]])
+    for i,k in enumerate(squares):
+        drawShape(k[1],squareScreenPositions[i],k[3],1)
+        if actualClickDone and i!=boardLastPrinted and sum([(squareScreenPositions[i][di]-mouse[di])**2 for di in range(dims)])<k[1][0]**2:
             print(printBoard(states[i][1]))
             boardLastPrinted=i
     pygame.display.flip()

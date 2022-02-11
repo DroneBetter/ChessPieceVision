@@ -63,3 +63,12 @@ In the modes with connections on rectangular boards (including the default chess
 [Simon](https://stackoverflow.com/users/827753/simon) on StackOverflow for the [O(1) function for minimum knight move count between relative coordinates on an infinite plane](https://stackoverflow.com/a/41704071), used as the heuristic in the A\* search algorithm in Ben Finegold mode.
 
 [@boraini](https://scratch.mit.edu/users/boraini) on Scratch for [the quaternion functions](https://turbowarp.org/454897467) used in this for 3D rotation (I originally used absolute yaw and pitch gimbals, but I had the problems with absolute yaw at high pitch corresponding with local roll, and unconstrained pitch inverting yaw controls, but with quaternions, mouse dragging now always corresponds with local yaw and pitch).
+
+# Tablebase Vision
+A Python program that is similar to the original/main purpose of CPV except generating tablebases (lists of all possible positions (permutations with turns) of a set of pieces with all possible moves they can make) and displaying them as a state transition diagram (like what Stephen Wolfram made for [elementary cellular automata](https://demonstrations.wolfram.com/CellularAutomatonStateTransitionDiagrams/)), currently only supporting kings.
+## TODO
+- Add move generation for the other pieces
+- Add 3D mode (for the embedding of the graph, not the board itself) with quaternion rotation
+- Add node colouring based on whether it's checkmate (and regress to show detection of mate-in-n states)
+- Add the ability to play against the tablebase (play chess with God)
+- Add topological manifold boards (play chess with Klein bottle God and such)

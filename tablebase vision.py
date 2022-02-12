@@ -2,7 +2,7 @@ import math, pygame, random
 from pygame.locals import *
 clock=pygame.time.Clock()
 
-boardWidth=4
+boardWidth=3
 boardSquares=boardWidth**2
 board=[]*boardSquares
 pieceNames=["empty","king","queen","rook","bishop","knight","pawn"]
@@ -110,15 +110,16 @@ def printBoard(board):
 pygame.init()
 black=(0,0,0)
 squareColours=((236,217,185),(174,137,104)) #I am using lichess's square colours (I am wanted throughout NATO)
-size=[1050,1050] #my computer resolution (to let NATO catch me more easily)
+dims=2
+size=[1050]*dims #my computer resolution (to let NATO catch me more easily)
 screen = pygame.display.set_mode((size[0], size[1]))
-camera=[i/2 for i in size]
+cameraPosition=[i/2 for i in size]
+cameraAngle=[1]+[0]*3
 clickDone=0
 boardLastPrinted=0
 rad=size[0]/len(states)
 #bitColours=[[int(255*(math.cos((j/n-i/3)*2*math.pi)+1)/2) for i in range(3)] for j in range(n)]
-squares=[[[[s*rad,0],[size[1]/2,random.random()/2**8]],[rad]*2,1, squareColours[t[0]]] for s,t in enumerate(states)]
-dims=2
+squares=[[[[s*rad,0]]+[[size[di]/2,random.random()/2**8] for di in range(dims-1)],[rad]*2,1, squareColours[t[0]]] for s,t in enumerate(states)]
 FPS=60
 drag=0.1
 gravitationalConstant=-(size[0]/10)/(len(squares)/64)**2
@@ -146,31 +147,56 @@ def physics():
                 k[0][di][1]+=differences[di]*(hookeStrength*(j in stateTransitions[i])+gravity*l[2])
                 l[0][di][1]-=differences[di]*(hookeStrength*(i in stateTransitions[j])+gravity*k[2])''' #doesn't seem to work (I think because enumerate's indices are on the output list, not the intput)
 def drawShape(size,pos,colour,shape):
-    color=(colour[0],colour[1],colour[2])
     if shape==0:
         surf = pygame.Surface(size)
-        surf.fill(color)
+        surf.fill(colour)
         rect = surf.get_rect()
         screen.blit(surf, pos)
     else:
-        pygame.draw.circle(screen, color, pos, size[0])
+        pygame.draw.circle(screen, colour, pos, size[0])
 def drawLine(initial,destination,colour):
     pygame.draw.line(screen,colour,initial,destination)
 
+def quaternionMultiply(a,b):
+    return [a[0]*b[0]-a[1]*b[1]-a[2]*b[2]-a[3]*b[3],a[0]*b[1]+a[1]*b[0]+a[2]*b[3]-a[3]*b[2],a[0]*b[2]-a[1]*b[3]+a[2]*b[0]+a[3]*b[1],a[0]*b[3]+a[1]*b[2]+a[2]*b[1]+a[3]*b[0]]
+
+def quaternionConjugate(q):
+    return [q[0]]+[-q[i] for i in range(1,len(q))]
+
+def rotateVector(v,q): #sR is stereographic radius (to be passed through to perspective function)
+    return quaternionMultiply(quaternionMultiply(q,[0]+v),quaternionConjugate(q))
+
+pixelAngle=math.tau/max(size)
+def rotateByScreen(angle,screenRotation):
+    magnitude=math.sqrt(sum([i**2 for i in screenRotation]))
+    if magnitude==0:
+        return angle
+    else:
+        magpi=magnitude*pixelAngle
+        simagomag=math.sin(magpi)/magnitude #come and get your simagomags delivered fresh
+        #print("screen rotation",math.sqrt(sum([i**2 for i in angle])),"multiplication",sum([i**2 for i in [math.cos(magpi),-screenRotation[1]*simagomag,screenRotation[0]*simagomag,0]]),"output",sum([i**2 for i in quaternionMultiply([math.cos(magpi),-screenRotation[1]*simagomag,screenRotation[0]*simagomag,0], angle)]),"input",sum([i**2 for i in angle]))
+        return quaternionMultiply([math.cos(magpi),-screenRotation[1]*simagomag,screenRotation[0]*simagomag,0], angle)
+
 def findSquareScreenPositions():
-    output=[[s[0][di][0]-camera[di] for di in range(dims)] for s in squares]
+    output=[[s[0][di][0]-cameraPosition[di] for di in range(dims)] for s in squares]
+    if dims==3:
+        output=[rotateVector(rotateVector(cameraAngle,[0]+s),quaternionConjugate(cameraAngle))[0:2] for s in output]
     return output
 
+oldMouse=pygame.mouse.get_pos()
 run=True
 while run:
     for event in pygame.event.get():
         run=event.type != pygame.QUIT
-        debounce=clickDone
         clickDone=event.type == pygame.MOUSEBUTTONUP
-        actualClickDone=(clickDone==1 and debounce==0)
-    camera=[sum([i[0][di][0] for i in squares])/len(squares)-size[di]/2 for di in range(dims)]
+    cameraPosition=[sum([i[0][di][0] for i in squares])/len(squares)-size[di]/2 for di in range(dims)]
+    if dims==3:
+        mouse=pygame.mouse.get_pos()
+        mouseChange=[mouse[i]-oldMouse[i] for i in range(2)]
+        oldMouse=mouse
+        if pygame.mouse.get_pressed()[0]==1:
+            cameraAngle=rotateByScreen(cameraAngle, mouseChange)
     squareScreenPositions=findSquareScreenPositions()
-    mouse=pygame.mouse.get_pos()
     physics()
     screen.fill(black)
     for i,k in enumerate(stateTransitions):
@@ -178,10 +204,9 @@ while run:
             drawLine(squareScreenPositions[i],squareScreenPositions[l],squareColours[states[i][0]])
     for i,k in enumerate(squares):
         drawShape(k[1],squareScreenPositions[i],k[3],1)
-        if actualClickDone and i!=boardLastPrinted and sum([(squareScreenPositions[i][di]-mouse[di])**2 for di in range(dims)])<k[1][0]**2:
-            print(printBoard(states[i][1]))
+        if clickDone and i!=boardLastPrinted and sum([(squareScreenPositions[i][di]-mouse[di])**2 for di in range(dims)])<k[1][0]**2:
+            #print(printBoard(states[i][1]))
             boardLastPrinted=i
     pygame.display.flip()
     clock.tick(FPS)
-else:
-    exit()
+exit()

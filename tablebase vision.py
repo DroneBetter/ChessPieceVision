@@ -132,20 +132,13 @@ def physics():
                 i[0][di][1]*=1-absVel*drag #air resistance
         for di in range(dims):
             i[0][di][0]+=i[0][di][1]
-    for i in range(len(squares)-1):
-        for j in range(i+1,len(squares)):
-            differences=[squares[j][0][di][0]-squares[i][0][di][0] for di in range(dims)]
-            gravity=gravitationalConstant/max(1,math.sqrt(sum([di**2 for di in differences])**3))
-            for di in range(dims):
-                squares[i][0][di][1]+=differences[di]*(hookeStrength*(j in stateTransitions[i])+gravity*squares[j][2])
-                squares[j][0][di][1]-=differences[di]*(hookeStrength*(i in stateTransitions[j])+gravity*squares[i][2])
-''''for i,k in enumerate(squares[:-1]):
+    for i,k in enumerate(squares[:-1]):
         for j,l in enumerate(squares[i:]):
             differences=[l[0][di][0]-k[0][di][0] for di in range(dims)]
             gravity=gravitationalConstant/max(1,math.sqrt(sum([di**2 for di in differences])**3))
             for di in range(dims):
-                k[0][di][1]+=differences[di]*(hookeStrength*(j in stateTransitions[i])+gravity*l[2])
-                l[0][di][1]-=differences[di]*(hookeStrength*(i in stateTransitions[j])+gravity*k[2])''' #doesn't seem to work (I think because enumerate's indices are on the output list, not the intput)
+                k[0][di][1]+=differences[di]*(hookeStrength*(i+j in stateTransitions[i])+gravity*l[2])
+                l[0][di][1]-=differences[di]*(hookeStrength*(i in stateTransitions[i+j])+gravity*k[2])
 def drawShape(size,pos,colour,shape):
     if shape==0:
         surf = pygame.Surface(size)
@@ -209,4 +202,5 @@ while run:
             boardLastPrinted=i
     pygame.display.flip()
     clock.tick(FPS)
-exit()
+else:
+    exit()

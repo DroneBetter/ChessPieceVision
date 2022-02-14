@@ -110,7 +110,7 @@ def printBoard(board):
 pygame.init()
 black=(0,0,0)
 squareColours=((236,217,185),(174,137,104)) #I am using lichess's square colours (I am wanted throughout NATO)
-dims=2
+dims=3
 size=[1050]*dims #my computer resolution (to let NATO catch me more easily)
 screen = pygame.display.set_mode((size[0], size[1]))
 cameraPosition=[i/2 for i in size]
@@ -151,10 +151,13 @@ def drawLine(initial,destination,colour):
     pygame.draw.line(screen,colour,initial,destination)
 
 def quaternionMultiply(a,b):
-    return [a[0]*b[0]-a[1]*b[1]-a[2]*b[2]-a[3]*b[3],a[0]*b[1]+a[1]*b[0]+a[2]*b[3]-a[3]*b[2],a[0]*b[2]-a[1]*b[3]+a[2]*b[0]+a[3]*b[1],a[0]*b[3]+a[1]*b[2]+a[2]*b[1]+a[3]*b[0]]
+    return [a[0]*b[0]-a[1]*b[1]-a[2]*b[2]-a[3]*b[3],
+            a[0]*b[1]+a[1]*b[0]+a[2]*b[3]-a[3]*b[2],
+            a[0]*b[2]-a[1]*b[3]+a[2]*b[0]+a[3]*b[1],
+            a[0]*b[3]+a[1]*b[2]-a[2]*b[1]+a[3]*b[0]]
 
 def quaternionConjugate(q):
-    return [q[0]]+[-q[i] for i in range(1,len(q))]
+    return [q[0]]+[-i for i in q[1:4]]
 
 def rotateVector(v,q): #sR is stereographic radius (to be passed through to perspective function)
     return quaternionMultiply(quaternionMultiply(q,[0]+v),quaternionConjugate(q))
@@ -167,13 +170,12 @@ def rotateByScreen(angle,screenRotation):
     else:
         magpi=magnitude*pixelAngle
         simagomag=math.sin(magpi)/magnitude #come and get your simagomags delivered fresh
-        #print("screen rotation",math.sqrt(sum([i**2 for i in angle])),"multiplication",sum([i**2 for i in [math.cos(magpi),-screenRotation[1]*simagomag,screenRotation[0]*simagomag,0]]),"output",sum([i**2 for i in quaternionMultiply([math.cos(magpi),-screenRotation[1]*simagomag,screenRotation[0]*simagomag,0], angle)]),"input",sum([i**2 for i in angle]))
         return quaternionMultiply([math.cos(magpi),-screenRotation[1]*simagomag,screenRotation[0]*simagomag,0], angle)
 
 def findSquareScreenPositions():
     output=[[s[0][di][0]-cameraPosition[di] for di in range(dims)] for s in squares]
     if dims==3:
-        output=[rotateVector(rotateVector(cameraAngle,[0]+s),quaternionConjugate(cameraAngle))[0:2] for s in output]
+        output=[[i+size[di]/2 for di,i in enumerate(rotateVector([s[di]-size[di]/2 for di in range(dims)],cameraAngle)[0:3])] for s in output]
     return output
 
 oldMouse=pygame.mouse.get_pos()
@@ -183,24 +185,27 @@ while run:
         run=event.type != pygame.QUIT
         clickDone=event.type == pygame.MOUSEBUTTONUP
     cameraPosition=[sum([i[0][di][0] for i in squares])/len(squares)-size[di]/2 for di in range(dims)]
+    mouse=pygame.mouse.get_pos()
     if dims==3:
-        mouse=pygame.mouse.get_pos()
         mouseChange=[mouse[i]-oldMouse[i] for i in range(2)]
         oldMouse=mouse
         if pygame.mouse.get_pressed()[0]==1:
             cameraAngle=rotateByScreen(cameraAngle, mouseChange)
     squareScreenPositions=findSquareScreenPositions()
+    print(squareScreenPositions)
+    renderOrder=[i for _, i in sorted([(j[0],i) for i,j in enumerate(squareScreenPositions)])]
+    squareScreenPositions=[i[1:3] for i in squareScreenPositions]
     physics()
     screen.fill(black)
     for i,k in enumerate(stateTransitions):
         for j,l in enumerate(k):
             drawLine(squareScreenPositions[i],squareScreenPositions[l],squareColours[states[i][0]])
-    for i,k in enumerate(squares):
+    for i in renderOrder:
+        k=squares[i]
         drawShape(k[1],squareScreenPositions[i],k[3],1)
-        if clickDone and i!=boardLastPrinted and sum([(squareScreenPositions[i][di]-mouse[di])**2 for di in range(dims)])<k[1][0]**2:
-            #print(printBoard(states[i][1]))
+        if clickDone and i!=boardLastPrinted and sum([(squareScreenPositions[i][di]-mouse[di])**2 for di in range(2)])<k[1][0]**2: #the range(2) will eventually have to be changed when I get a 3D monitor
+            print(printBoard(states[i][1]))
             boardLastPrinted=i
     pygame.display.flip()
     clock.tick(FPS)
-else:
-    exit()
+exit()

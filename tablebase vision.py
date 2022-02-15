@@ -7,11 +7,7 @@ boardSquares=boardWidth**2
 board=[]*boardSquares
 pieceNames=["empty","king","queen","rook","bishop","knight","pawn"]
 pieceSymbols=[[" ","k","q","r","b","n","p"],[" ","K","Q","R","B","N","P"]]
-
-def precomputeKnightMoves():
-    return
-precomputedKnightMoves=precomputeKnightMoves()
-
+precomputedKnightMoves=[]
 def findPieceMoves(piece,position): #outputs list of squares to which piece can travel
     if piece==0:
         return [] #return exits the function
@@ -36,10 +32,10 @@ def findPieceMoves(piece,position): #outputs list of squares to which piece can 
         if position<boardSquares-boardWidth: #not on top row
             moves+=[i+boardWidth for i in horizontalMoves]
     elif piece==5: #extremely inelegant but I will call it hardcoded instead
-        return precomputedKnightMoves[position]
+        #return precomputedKnightMoves[position]
         #xMovement=max(xPosition-boardWidth+3,0) if xPosition>1 else -1-(xPosition==0) #removed because I realised it doesn't work with 3*3 boards (where it's both 1 and -1)
         sideObstructions=[max(2-xPosition,0),max(xPosition-boardWidth+3,0),(position<2*boardWidth)*(1+(position<boardWidth)),(position>=boardSquares-2*boardWidth)*(1+(position>=boardSquares-boardWidth))] #directions [left,right,down,up], 0 is unobstructed, 1 is next to edge, 2 is on edge
-    ''''if sideObstructions[0]<2:
+        if sideObstructions[0]<2:
             if sideObstructions[3]==0:
                 moves+=(-1,-2)
             if sideObstructions[4]==0:
@@ -58,9 +54,12 @@ def findPieceMoves(piece,position): #outputs list of squares to which piece can 
                 if sideObstructions[3]<2:
                     moves+=(2,1)
                 if sideObstructions[4]<2:
-                    moves+=(2,-1)''' #this part not finished due to inelegance (and using maximum 12 list lookups (you can do it in 8 if you're willing to repeat statements more, but I can't find an efficient way to do '(do c and (b if d)) if a else (b if e)' ))
+                    moves+=(2,-1) #this part not finished due to inelegance (and using maximum 12 list lookups (you can do it in 8 if you're willing to repeat statements more, but I can't find an efficient way to do '(do c and (b if d)) if a else (b if e)' ))
     return moves
 
+def precomputeKnightMoves():
+    return [findPieceMoves(5,i) for i in range(boardSquares)]
+#precomputedKnightMoves=precomputeKnightMoves()
 
 statesWithoutTurns=[] #list of all legal states (permutations of pieces) as lists of piece types and colours (0 if no piece)
 stateSquareAttacks=[] #list of whether each square is attacked and (if so) by whom
@@ -114,7 +113,7 @@ dims=3
 size=[1050]*dims #my computer resolution (to let NATO catch me more easily)
 screen = pygame.display.set_mode((size[0], size[1]))
 cameraPosition=[i/2 for i in size]
-cameraAngle=[1]+[0]*3
+cameraAngle=[[1]+[0]*3]*2
 clickDone=0
 boardLastPrinted=0
 rad=size[0]/len(states)
@@ -170,29 +169,40 @@ def rotateByScreen(angle,screenRotation):
     else:
         magpi=magnitude*pixelAngle
         simagomag=math.sin(magpi)/magnitude #come and get your simagomags delivered fresh
-        return quaternionMultiply([math.cos(magpi),-screenRotation[1]*simagomag,screenRotation[0]*simagomag,0], angle)
+        return quaternionMultiply([math.cos(magpi)]+[i*simagomag for i in screenRotation], angle)
 
 def findSquareScreenPositions():
     output=[[s[0][di][0]-cameraPosition[di] for di in range(dims)] for s in squares]
     if dims==3:
-        output=[[i+size[di]/2 for di,i in enumerate(rotateVector([s[di]-size[di]/2 for di in range(dims)],cameraAngle)[0:3])] for s in output]
+        output=[[i+size[di]/2 for di,i in enumerate(rotateVector([s[di]-size[di]/2 for di in range(dims)],cameraAngle[0])[0:3])] for s in output]
     return output
 
-oldMouse=pygame.mouse.get_pos()
+gain=1
+angularVelocityConversionFactor=math.tau/FPS
 run=True
 while run:
     for event in pygame.event.get():
         run=event.type != pygame.QUIT
         clickDone=event.type == pygame.MOUSEBUTTONUP
     cameraPosition=[sum([i[0][di][0] for i in squares])/len(squares)-size[di]/2 for di in range(dims)]
-    mouse=pygame.mouse.get_pos()
     if dims==3:
-        mouseChange=[mouse[i]-oldMouse[i] for i in range(2)]
-        oldMouse=mouse
-        if pygame.mouse.get_pressed()[0]==1:
-            cameraAngle=rotateByScreen(cameraAngle, mouseChange)
+        mouse=pygame.mouse
+        keys=pygame.key.get_pressed()
+        if mouse.get_pressed()[0]==1:
+            mouseChange=mouse.get_rel()
+        else:
+            mouseChange=(0,)*2
+        arrowAccs=[0]+[keys[pygame.K_UP]-keys[pygame.K_DOWN],keys[pygame.K_RIGHT]-keys[pygame.K_LEFT],keys[pygame.K_e]-keys[pygame.K_q]] 
+        magnitude=math.sqrt(sum([abs(i) for i in arrowAccs]))
+        if magnitude!=0:
+            arrowAccs=[i/magnitude for i in arrowAccs]
+        for di in range(1,4):
+            cameraAngle[1][di]+=arrowAccs[di]*gain*angularVelocityConversionFactor
+            cameraAngle[1][di]/=1+drag #cameraOrientation[1][0] isn't used (because they're yaw,pitch,roll but they pretend to be i,j,k (no w))
+        mouserino=[cameraAngle[1][1]-mouseChange[1],cameraAngle[1][2]+mouseChange[0],cameraAngle[1][3]] #temporarily less elegant so rotateByScreen can use comprehension
+        cameraAngle[0]=rotateByScreen(cameraAngle[0],mouserino)
     squareScreenPositions=findSquareScreenPositions()
-    print(squareScreenPositions)
+    #print(squareScreenPositions)
     renderOrder=[i for _, i in sorted([(j[0],i) for i,j in enumerate(squareScreenPositions)])]
     squareScreenPositions=[i[1:3] for i in squareScreenPositions]
     physics()
@@ -200,12 +210,14 @@ while run:
     for i,k in enumerate(stateTransitions):
         for j,l in enumerate(k):
             drawLine(squareScreenPositions[i],squareScreenPositions[l],squareColours[states[i][0]])
+    if clickDone:
+        mousePos=mouse.get_pos()
     for i in renderOrder:
         k=squares[i]
         drawShape(k[1],squareScreenPositions[i],k[3],1)
-        if clickDone and i!=boardLastPrinted and sum([(squareScreenPositions[i][di]-mouse[di])**2 for di in range(2)])<k[1][0]**2: #the range(2) will eventually have to be changed when I get a 3D monitor
+        if clickDone and i!=boardLastPrinted and sum([(squareScreenPositions[i][di]-mousePos[di])**2 for di in range(2)])<k[1][0]**2: #the range(2) will eventually have to be changed when I get a 3D monitor
             print(printBoard(states[i][1]))
             boardLastPrinted=i
     pygame.display.flip()
     clock.tick(FPS)
-exit()
+else: exit()

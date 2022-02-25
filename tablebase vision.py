@@ -18,7 +18,7 @@ def generateCombinations(material):
         if c not in nonDuplicateCombinations:
             nonDuplicateCombinations.append(c)
     return nonDuplicateCombinations
-combinations=generateCombinations(parseMaterial("KNvK"))
+combinations=generateCombinations(parseMaterial("KNNvK"))
 print("combinations:",combinations)
 
 def generatePermutations(material,squares):
@@ -29,11 +29,11 @@ def appendMove(relativeMovement):
     return position+relativeMovement[0]+boardWidth*relativeMovement[1]
 
 precomputedKnightMoves=[]
-def findPieceMoves(piece,position): #outputs list of squares to which piece can travel
+def findPieceMoves(piece,position,boardState): #outputs list of squares to which piece can travel
     if piece==0:
         return [] #return exits the function
     if piece==2:
-        return findPieceMoves(3,position)+findPieceMoves(4,position)
+        return sum([findPieceMoves(i,position,boardState) for i in range(3,5)])
     if piece==3:
         exit()
     if piece==4:
@@ -81,7 +81,7 @@ def findPieceMoves(piece,position): #outputs list of squares to which piece can 
             
     return moves
 def precomputeKnightMoves():
-    return [findPieceMoves(5,i) for i in range(boardSquares)]
+    return [findPieceMoves(5,i,[[]]*boardSquares) for i in range(boardSquares)]
 knightMovesPrecomputed=0
 precomputedKnightMoves=precomputeKnightMoves()
 knightMovesPrecomputed=1
@@ -90,11 +90,12 @@ print("precomputed knight moves:",precomputedKnightMoves)
 #piecePermutations=[[[0,0]]*(boardSquares-2)]
 statesWithoutTurns=[] #list of all legal states (permutations of pieces) as lists of piece types and colours (0 if no piece)
 stateSquareAttacks=[] #list of whether each square is attacked and (if so) by whom
+stateChecks=[]
 for r in combinations:
     piecePermutations=generatePermutations(r,boardSquares-2-len(r))
     #print("permutation lengths (should be "+str(boardSquares)+"):",[len(i) for i in piecePermutations])
     for i in range(boardSquares):
-        iKingMoves=findPieceMoves(1,i) #the new Apple product
+        iKingMoves=findPieceMoves(1,i,[[]]*boardSquares) #the new Apple product
         for j in range(boardSquares):
             if not (i==j or j in iKingMoves):
                 kingState=[[int(k==i or k==j),int(k==j)] for k in range(boardSquares)] #each square in each state list (in the list of them) is a list of the piece and its colour
@@ -102,27 +103,73 @@ for r in combinations:
                 for p,q in enumerate(piecePermutations):
                     m=-1
                     fixedKingPermutations[p]=[l if l[0]==1 else q[m:=m+1] for l in kingState] #the walrus operator is quite cute I would say
-                print("fixed-king permutation lengths (should be "+str(boardSquares)+"):",[len(i) for i in fixedKingPermutations])
+                #print("fixed-king permutation lengths (should be",str(boardSquares)+"):",[len(i) for i in fixedKingPermutations])
                 for p,q in enumerate(fixedKingPermutations):
                     statesWithoutTurns.append(q) #each square in each state list (in the list of them) is a list of the piece and its colour
                     attackedSquares=[]
                     for k,s in enumerate(statesWithoutTurns[-1]): #cannot be list comprehension because it references the list as it constructs it (I am greatly saddened)
-                        for l in findPieceMoves(s[0],k):
+                        for l in findPieceMoves(s[0],k,q):
                             #print(s,m,statesWithoutTurns[-1])
-                            if ([l,s[1]] not in attackedSquares): #initially contained 'and (statesWithoutTurns[-1][m][0]==0 or statesWithoutTurns[-1][m][1]!=s[1])' but should not because then it doesn't recognise pieces defending each other
+                            if ([l,s[1]] not in attackedSquares): #initially contained 'and (statesWithoutTurns[-1][m][0]==0 or statesWithoutTurns[-1][m][1]!=s[1])' but shouldn't because then it doesn't recognise pieces defending each other (very suspicious)
                                 attackedSquares.append([l,s[1]]) #will have to be made more complicated if pawns added
                         #print(attackedSquares)
                     #[0,0] is empty, [1,0] is white, [1,1] is black (may eventually be pairs of 64-bit binary numbers (like bitboards) when I need to optimise it)
                     stateSquareAttacks.append([[int([k,l] in attackedSquares) for l in range(2)] for k in range(boardSquares)]) #[0,0] is empty, [1,0] white, [0,1] black, [1,1] both
+                    stateChecks.append([stateSquareAttacks[-1][i][1],stateSquareAttacks[-1][j][0]])
 #print(len(statesWithoutTurns),"states without turns:",statesWithoutTurns)
 states=[[j,i] for j in range(2) for i in statesWithoutTurns] #each state is formatted [colour to move,[[[square piece],[square colour]],[[square piece],[square colour]], ...]]
 #print(len(states),"states:",states)
 stateSquareAttacks=[i for j in range(2) for i in stateSquareAttacks] #state formatted [[attacked by white?,attacked by black?] for square in range(boardSquares)] #get a load of the comments' opening square brackets' kerning
 #print(len(stateSquareAttacks),"state square attacks:",stateSquareAttacks)
-stateMoves=[[[j for j in findPieceMoves(t[1][i][0],i) if (t[1][j][0]==0 or t[1][i][1]!=t[1][j][1]) and (stateSquareAttacks[s][j][1-t[0]]==0 if t[1][i][0]==1 else t[1][j][0]!=1)] if t[1][i][1]==t[0] else [] for i in range(boardSquares)] for s,t in enumerate(states)] #is list of lists of destination squares for each piece #the i list comprehension if statement would have (s[1][i][0]!=0 and ) but is now superseded by findPieceMoves
+stateChecks=[i for j in range(2) for i in stateChecks]
+#print("state checks",[[j[0],stateChecks[i]] for i,j in enumerate(states)])
+stateMoves=[[[j for j in findPieceMoves(t[1][i][0],i,t) if (t[1][j][0]==0 or t[1][i][1]!=t[1][j][1]) and (stateSquareAttacks[s][j][1-t[0]]==0 if t[1][i][0]==1 else t[1][j][0]!=1)] if t[1][i][1]==t[0] else [] for i in range(boardSquares)] for s,t in enumerate(states)] #is list of lists of destination squares for each piece #the i list comprehension if statement would have (s[1][i][0]!=0 and ) but is now superseded by findPieceMoves
 stateTransitions=[[states.index([1-t[0],[[0,0] if k==i else (t[1][i] if k==p else r) for k,r in enumerate(t[1])]]) for i,q in enumerate(stateMoves[s]) for p in q] for s,t in enumerate(states)]
-print("transitions between",len(states),"states:",stateTransitions)
+#print("transitions between",len(states),"states:",stateTransitions)
+stateIllegalities=[(stateChecks[i][1-j[0]]==1) for i,j in enumerate(states)]
+#print("state illegalities",stateIllegalities)
+stateNewIDs=[]
+k=-1
+prunedStates=0
+for i,j in enumerate(states):
+    if stateIllegalities[i]==1:
+        stateNewIDs.append(None)
+    else:
+        stateNewIDs.append(k:=k+1)
+        prunedStates+=1
+def pruneIllegalities(stateList):
+    return [j for i,j in enumerate(stateList) if stateIllegalities[i]==0]
+#print(len(states),"states pruned to",prunedStates)
+#print("state new IDs",stateNewIDs)
+states=pruneIllegalities(states)
+stateSquareAttacks=pruneIllegalities(stateSquareAttacks)
+#we don't care about stateMoves after it's been used to make stateTransitions (which replaces it)
+stateTransitions=[[stateNewIDs[k] for k in j if stateIllegalities[k]==0] for i,j in enumerate(stateTransitions) if stateIllegalities[i]==0]
 
+stateWinningnesses=[(a[s[1].index([1,s[0]])][1-s[0]]) if t==[] else None for s,t,a in zip(states,stateTransitions,stateSquareAttacks)] #0 if drawing, 1 if winning, -1 if losing (like engine evaluations but only polarity (and relative like Syzygy, not absolute like engines), not magnitude (due to infinite intelligence))
+stateWinningnesses=[[(0 if w==None else w),(None if w==None else 0)] for w in stateWinningnesses] #it assumes each position is drawing until it learns otherwise (because infinite loops with insufficient material to forcibly stalemate (and be marked as such by the regression) are draws) #would put into one line but wouldn't then be very legible
+i=0
+while i==0 or stateChanges!=0:
+    blitStateWinningnesses=[]
+    for j,s in enumerate(states):
+        bestWinningness=-1
+        bestMoves=0
+        for k in stateTransitions[j]:
+            candidateWinningness=-stateWinningnesses[k][0]
+            candidateMoves=stateWinningnesses[k][1]
+            if candidateMoves!=None:
+                candidateMoves+=1
+            if candidateWinningness>bestWinningness or (candidateMoves>bestMoves if candidateWinningness==bestWinningness==-1 else (candidateMoves!=None and (bestMoves==None or candidateMoves<bestMoves))): #if neither side can win, it will attempt to stalemate as quickly as possible (but still prolongs mate if losing and does it as quickly as possible if winning)
+                bestWinningness=candidateWinningness
+                bestMoves=candidateMoves
+        blitStateWinningnesses.append([bestWinningness,bestMoves])
+    stateChanges=sum([int(b!=w) for b,w in zip(blitStateWinningnesses,stateWinningnesses)])
+    print(stateChanges,"states changed")
+    stateWinningnesses=blitStateWinningnesses
+    i+=1
+
+
+#print(stateTransitions)
 def underline(input): #from https://stackoverflow.com/a/71034895
     return '{:s}'.format('\u0332'.join(input+' '))[0:-1]
 

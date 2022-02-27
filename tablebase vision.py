@@ -1,7 +1,5 @@
-import math, pygame, random
+import math, random
 from sympy.utilities.iterables import multiset_permutations, combinations #generates permutations where elements are identical, from https://stackoverflow.com/a/60252630
-from pygame.locals import *
-clock=pygame.time.Clock()
 
 boardWidth=3
 boardSquares=boardWidth**2
@@ -33,7 +31,7 @@ def findPieceMoves(piece,position,boardState): #outputs list of squares to which
     if piece==0:
         return [] #return exits the function
     if piece==2:
-        return sum([findPieceMoves(i,position,boardState) for i in range(3,5)])
+        return sum(findPieceMoves(i,position,boardState) for i in range(3,5))
     if piece==3:
         exit()
     if piece==4:
@@ -81,7 +79,7 @@ def findPieceMoves(piece,position,boardState): #outputs list of squares to which
             
     return moves
 def precomputeKnightMoves():
-    return [findPieceMoves(5,i,[[]]*boardSquares) for i in range(boardSquares)]
+    return [findPieceMoves(5,i,[[0,0]]*boardSquares) for i in range(boardSquares)]
 knightMovesPrecomputed=0
 precomputedKnightMoves=precomputeKnightMoves()
 knightMovesPrecomputed=1
@@ -95,26 +93,21 @@ for r in combinations:
     piecePermutations=generatePermutations(r,boardSquares-2-len(r))
     #print("permutation lengths (should be "+str(boardSquares)+"):",[len(i) for i in piecePermutations])
     for i in range(boardSquares):
-        iKingMoves=findPieceMoves(1,i,[[]]*boardSquares) #the new Apple product
+        iKingMoves=findPieceMoves(1,i,[[0,0]]*boardSquares) #the new Apple product
         for j in range(boardSquares):
             if not (i==j or j in iKingMoves):
                 kingState=[[int(k==i or k==j),int(k==j)] for k in range(boardSquares)] #each square in each state list (in the list of them) is a list of the piece and its colour
-                fixedKingPermutations=[[]]*len(piecePermutations) #not because the original ones are broken but because the kings are fixed in place
-                for p,q in enumerate(piecePermutations):
+                fixedKingPermutations=[] #not because the original ones are broken but because the kings are fixed in place
+                for q in piecePermutations:
                     m=-1
-                    fixedKingPermutations[p]=[l if l[0]==1 else q[m:=m+1] for l in kingState] #the walrus operator is quite cute I would say
+                    fixedKingPermutations.append([l if l[0]==1 else q[m:=m+1] for l in kingState]) #the walrus operator is quite cute I would say
                 #print("fixed-king permutation lengths (should be",str(boardSquares)+"):",[len(i) for i in fixedKingPermutations])
                 for p,q in enumerate(fixedKingPermutations):
                     statesWithoutTurns.append(q) #each square in each state list (in the list of them) is a list of the piece and its colour
-                    attackedSquares=[]
-                    for k,s in enumerate(statesWithoutTurns[-1]): #cannot be list comprehension because it references the list as it constructs it (I am greatly saddened)
-                        for l in findPieceMoves(s[0],k,q):
-                            #print(s,m,statesWithoutTurns[-1])
-                            if ([l,s[1]] not in attackedSquares): #initially contained 'and (statesWithoutTurns[-1][m][0]==0 or statesWithoutTurns[-1][m][1]!=s[1])' but shouldn't because then it doesn't recognise pieces defending each other (very suspicious)
-                                attackedSquares.append([l,s[1]]) #will have to be made more complicated if pawns added
-                        #print(attackedSquares)
+                    attackedSquares=set((l,s[1]) for k,s in enumerate(statesWithoutTurns[-1]) for l in findPieceMoves(s[0],k,q)) #will have to be made more complicated if pawns added (due to destination squares not being attacked)
+                    #print(attackedSquares)
                     #[0,0] is empty, [1,0] is white, [1,1] is black (may eventually be pairs of 64-bit binary numbers (like bitboards) when I need to optimise it)
-                    stateSquareAttacks.append([[int([k,l] in attackedSquares) for l in range(2)] for k in range(boardSquares)]) #[0,0] is empty, [1,0] white, [0,1] black, [1,1] both
+                    stateSquareAttacks.append([[int((k,l) in attackedSquares) for l in range(2)] for k in range(boardSquares)]) #[0,0] is empty, [1,0] white, [0,1] black, [1,1] both
                     stateChecks.append([stateSquareAttacks[-1][i][1],stateSquareAttacks[-1][j][0]])
 #print(len(statesWithoutTurns),"states without turns:",statesWithoutTurns)
 states=[[j,i] for j in range(2) for i in statesWithoutTurns] #each state is formatted [colour to move,[[[square piece],[square colour]],[[square piece],[square colour]], ...]]
@@ -144,30 +137,43 @@ def pruneIllegalities(stateList):
 states=pruneIllegalities(states)
 stateSquareAttacks=pruneIllegalities(stateSquareAttacks)
 #we don't care about stateMoves after it's been used to make stateTransitions (which replaces it)
+def printWinningnesses():
+    i=0
+    while i==0 or matesInI!=[0]*3:
+        matesInI=[sum(1 for j in stateWinningnesses if j[0]==w and j[1]==i) for w in range(-1,2)]
+        if matesInI!=[0]*3:
+            print("there are",matesInI[0],"losses in "+str(i)+",",matesInI[1],"stalemates in "+str(i)+", and",matesInI[2],"wins in",i)
+        i+=1
 stateTransitions=[[stateNewIDs[k] for k in j if stateIllegalities[k]==0] for i,j in enumerate(stateTransitions) if stateIllegalities[i]==0]
-
-stateWinningnesses=[(a[s[1].index([1,s[0]])][1-s[0]]) if t==[] else None for s,t,a in zip(states,stateTransitions,stateSquareAttacks)] #0 if drawing, 1 if winning, -1 if losing (like engine evaluations but only polarity (and relative like Syzygy, not absolute like engines), not magnitude (due to infinite intelligence))
+stateWinningnesses=[-(a[s[1].index([1,s[0]])][1-s[0]]) if t==[] else None for s,t,a in zip(states,stateTransitions,stateSquareAttacks)] #0 if drawing, 1 if winning, -1 if losing (like engine evaluations but only polarity (and relative like Syzygy, not absolute like engines), not magnitude (due to infinite intelligence))
 stateWinningnesses=[[(0 if w==None else w),(None if w==None else 0)] for w in stateWinningnesses] #it assumes each position is drawing until it learns otherwise (because infinite loops with insufficient material to forcibly stalemate (and be marked as such by the regression) are draws) #would put into one line but wouldn't then be very legible
+#print("state winningnesses:",stateWinningnesses)
+#printWinningnesses()
 i=0
 while i==0 or stateChanges!=0:
     blitStateWinningnesses=[]
-    for j,s in enumerate(states):
+    for t,s,w in zip(stateTransitions,states,stateWinningnesses):
         bestWinningness=-1
         bestMoves=0
-        for k in stateTransitions[j]:
-            candidateWinningness=-stateWinningnesses[k][0]
-            candidateMoves=stateWinningnesses[k][1]
-            if candidateMoves!=None:
-                candidateMoves+=1
-            if candidateWinningness>bestWinningness or (candidateMoves>bestMoves if candidateWinningness==bestWinningness==-1 else (candidateMoves!=None and (bestMoves==None or candidateMoves<bestMoves))): #if neither side can win, it will attempt to stalemate as quickly as possible (but still prolongs mate if losing and does it as quickly as possible if winning)
-                bestWinningness=candidateWinningness
-                bestMoves=candidateMoves
-        blitStateWinningnesses.append([bestWinningness,bestMoves])
-    stateChanges=sum([int(b!=w) for b,w in zip(blitStateWinningnesses,stateWinningnesses)])
+        if t==[]:
+            blitStateWinningnesses.append(w)
+        else:
+            for k in t:
+                candidateWinningness=-stateWinningnesses[k][0]
+                candidateMoves=stateWinningnesses[k][1]
+                if candidateMoves!=None:
+                    candidateMoves+=1
+                if candidateWinningness>=bestWinningness and (candidateWinningness>bestWinningness or (candidateMoves>bestMoves if candidateWinningness==-1 else (candidateMoves!=None and (bestMoves==None or candidateMoves<bestMoves)))): #if neither side can win, it will attempt to stalemate as quickly as possible (but still prolongs mate if losing and does it as quickly as possible if winning)
+                    bestWinningness=candidateWinningness
+                    bestMoves=candidateMoves
+            blitStateWinningnesses.append([bestWinningness,bestMoves])
+    stateChanges=sum(int(b!=w) for b,w in zip(blitStateWinningnesses,stateWinningnesses))
     print(stateChanges,"states changed")
     stateWinningnesses=blitStateWinningnesses
+    #print("new state winningnesses:",stateWinningnesses)
+    #printWinningnesses()
     i+=1
-
+printWinningnesses()
 
 #print(stateTransitions)
 def underline(input): #from https://stackoverflow.com/a/71034895
@@ -187,11 +193,14 @@ def printBoard(board):
             stateToPrint=""
     return output
 
+import pygame
+from pygame.locals import *
+clock=pygame.time.Clock()
 pygame.init()
 black=(0,0,0)
-squareColours=((236,217,185),(174,137,104)) #I am using lichess's square colours (I am wanted throughout NATO)
+squareColours=((236,217,185),(174,137,104)) #I am using lichess's square colours
 dims=3
-size=[1050]*dims #my computer resolution (to let NATO catch me more easily)
+size=[1050]*dims
 screen = pygame.display.set_mode(size[0:2])
 cameraPosition=[i/2 for i in size]
 cameraAngle=[[1]+[0]*3]*2
@@ -207,7 +216,7 @@ hookeStrength=1/size[0]
 def physics():
     for i in squares:
         if drag>0:
-            absVel=max(1,math.sqrt(sum([i[0][di][1]**2 for di in range(dims)]))) #each dimension's deceleration from drag is its magnitude as a component of the unit vector of velocity times absolute velocity squared, is actual component times absolute velocity.
+            absVel=max(1,math.sqrt(sum(i[0][di][1]**2 for di in range(dims)))) #each dimension's deceleration from drag is its magnitude as a component of the unit vector of velocity times absolute velocity squared, is actual component times absolute velocity.
             for di in i[0]:
                 di[1]*=1-absVel*drag #air resistance
         for di in i[0]:
@@ -215,7 +224,7 @@ def physics():
     for i,k in enumerate(squares[:-1]):
         for j,l in enumerate(squares[i+1:]):
             differences=[l[0][di][0]-k[0][di][0] for di in range(dims)]
-            gravity=gravitationalConstant/max(1,sum([di**2 for di in differences])**1.5) #inverse-square law is 1/distance**2, for x axis is cos(angle of distance from axis)/(absolute distance)**2, the cos is x/(absolute), so is x/(abs)**3, however the sum outputs distance**2 so is exponentiated by 1.5 instead of 3
+            gravity=gravitationalConstant/max(1,sum(di**2 for di in differences)**1.5) #inverse-square law is 1/distance**2, for x axis is cos(angle of distance from axis)/(absolute distance)**2, the cos is x/(absolute), so is x/(abs)**3, however the sum outputs distance**2 so is exponentiated by 1.5 instead of 3
             for di in range(dims):
                 k[0][di][1]+=differences[di]*(hookeStrength*(i+1+j in stateTransitions[i])+gravity*l[2])
                 l[0][di][1]-=differences[di]*(hookeStrength*(i in stateTransitions[i+1+j])+gravity*k[2])
@@ -244,7 +253,7 @@ def rotateVector(v,q): #sR is stereographic radius (to be passed through to pers
 
 pixelAngle=math.tau/max(size)
 def rotateByScreen(angle,screenRotation):
-    magnitude=math.sqrt(sum([i**2 for i in screenRotation]))
+    magnitude=math.sqrt(sum(i**2 for i in screenRotation))
     if magnitude==0:
         return angle
     else:
@@ -266,7 +275,7 @@ while run:
     for event in pygame.event.get():
         run=event.type != pygame.QUIT
         clickDone=event.type == pygame.MOUSEBUTTONUP
-    cameraPosition=[sum([i[0][di][0] for i in squares])/len(squares)-size[di]/2 for di in range(dims)]
+    cameraPosition=[sum(i[0][di][0] for i in squares)/len(squares)-size[di]/2 for di in range(dims)]
     if dims==3:
         keys=pygame.key.get_pressed()
         if mouse.get_pressed()[0]==1:
@@ -275,7 +284,7 @@ while run:
             mouse.get_rel() #otherwise it jumps
             mouseChange=(0,)*2
         arrowAccs=[0]+[keys[pygame.K_UP]-keys[pygame.K_DOWN],keys[pygame.K_RIGHT]-keys[pygame.K_LEFT],keys[pygame.K_e]-keys[pygame.K_q]] 
-        magnitude=math.sqrt(sum([abs(i) for i in arrowAccs]))
+        magnitude=math.sqrt(sum(abs(i) for i in arrowAccs))
         if magnitude!=0:
             arrowAccs=[i/magnitude for i in arrowAccs]
         for di in range(1,4):
@@ -297,7 +306,7 @@ while run:
     for i in renderOrder:
         k=squares[i]
         drawShape(k[1],squareScreenPositions[i],k[3],1)
-        if clickDone and i!=boardLastPrinted and sum([(squareScreenPositions[i][di]-mousePos[di])**2 for di in range(2)])<k[1][0]**2: #the range(2) will eventually have to be changed when I get a 3D monitor
+        if clickDone and i!=boardLastPrinted and sum((squareScreenPositions[i][di]-mousePos[di])**2 for di in range(2))<k[1][0]**2: #the range(2) will eventually have to be changed when I get a 3D monitor
             print(printBoard(states[i][1]))
             boardLastPrinted=i
     pygame.display.flip()

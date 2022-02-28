@@ -67,8 +67,12 @@ In the modes with connections on rectangular boards (including the default chess
 # Tablebase Vision
 A Python program that is similar to the original/main purpose of CPV except generating tablebases (lists of all possible positions (permutations with turns) of a set of pieces with all possible moves they can make) and displaying them as a state transition diagram (like what Stephen Wolfram made for [elementary cellular automata](https://demonstrations.wolfram.com/CellularAutomatonStateTransitionDiagrams/)), currently only supporting kings.
 ## TODO
-- Add move generation for the other pieces
-- Add 3D mode (for the embedding of the graph, not the board itself) with quaternion rotation
-- Add node colouring based on whether it's checkmate (and regress to show detection of mate-in-n states)
-- Add the ability to play against the tablebase (play chess with God)
+- Add move generation for iterative pieces (currently only kings and knights)
+- Add node colouring based on whether it's checkmate (or part of a forced sequence to which)
+- Add ability to play against the tablebase (play chess with God)
 - Add topological manifold boards (play chess with Klein bottle God and such)
+- Allow exporting tablebases to folder containing program (so they can be reimported instead of regenerated each time)
+- Add option to account for eightfold symmetry of square boards to reduce state list generation time and file size, and after topological manifold boards added, to account for their vertex-transitivity to reduce even further
+Done:
+- Add 3D mode (for the embedding of the graph, not the board itself) with quaternion rotation
+- Detect and regress from checkmated positions (and stalemated at a lower priority that checkmate overwrites) to determine optimal moves

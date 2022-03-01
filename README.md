@@ -69,10 +69,10 @@ A Python program that is similar to the original/main purpose of CPV except gene
 ## TODO
 - Add move generation for iterative pieces (currently only kings and knights)
 - Add node colouring based on whether it's checkmate (or part of a forced sequence to which)
-- Add ability to play against the tablebase (play chess with God)
 - Add topological manifold boards (play chess with Klein bottle God and such)
 - Allow exporting tablebases to folder containing program (so they can be reimported instead of regenerated each time)
 - Add option to account for eightfold symmetry of square boards to reduce state list generation time and file size, and after topological manifold boards added, to account for their vertex-transitivity to reduce even further
 Done:
 - Add 3D mode (for the embedding of the graph, not the board itself) with quaternion rotation
 - Detect and regress from checkmated positions (and stalemated at a lower priority that checkmate overwrites) to determine optimal moves
+- Add ability to play against tablebases (play chess with God)

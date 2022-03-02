@@ -17,7 +17,7 @@ def generateCombinations(material):
         if c not in nonDuplicateCombinations:
             nonDuplicateCombinations.append(c)
     return nonDuplicateCombinations
-combinations=generateCombinations(parseMaterial("KNNvK"))
+combinations=generateCombinations(parseMaterial("KNvK"))
 print("combinations:",combinations)
 
 def generatePermutations(material,squares):
@@ -54,48 +54,29 @@ def findPieceMoves(piece,position,boardState): #outputs list of squares to which
     elif piece==5: #extremely inelegant but I will call it hardcoded instead
         if knightMovesPrecomputed:
             return precomputedKnightMoves[position]
-        #xMovement=max(xPosition-boardWidth+3,0) if xPosition>1 else -1-(xPosition==0) #removed because I realised it doesn't work with 3*3 boards (where it's both 1 and -1)
-        sideObstructions=[max(2-xPosition,0),max(xPosition-boardWidth+3,0),(position<2*boardWidth)+(position<boardWidth),(position>=boardSquares-2*boardWidth)+(position>=boardSquares-boardWidth)] #directions [left,right,down,up], 0 is unobstructed, 1 is next to edge, 2 is on edge
-        if sideObstructions[0]<2:
-            if sideObstructions[2]==0:
-                moves.append((-1,-2))
-            if sideObstructions[3]==0:
-                moves.append((-1,2))
-            if sideObstructions[0]==0:
-                if sideObstructions[2]<2:
-                    moves.append((-2,-1))
-                if sideObstructions[3]<2:
-                    moves.append((-2,1))
-        if sideObstructions[1]<2:
-            if sideObstructions[2]==0:
-                moves.append((1,-2))
-            if sideObstructions[3]==0:
-                moves.append((1,2))
-            if sideObstructions[1]==0:
-                if sideObstructions[2]<2:
-                    moves.append((2,-1))
-                if sideObstructions[3]<2:
-                    moves.append((2,1)) #I can't find an efficient way to do (i if e and b), (j if f and a), (k if f and c), (l if g and b), (m if g and d), (n if h and c), (o if h and a) and (p if e and d) where e implies a, f implies b, g implies c and h implies d (it can be implemented in eight lookups trivially if you're creating a circuit board but requires twelve with this method)
-        moves=[position+m[0]+m[1]*boardWidth for m in moves]
-            
+        moves=[(position+xPolarity*(2-skewedness)+yPolarity*(1+skewedness)*boardWidth) for skewedness in range(2) for xPolarity in range(-1,3,2) if (xPosition>1-skewedness if xPolarity==-1 else boardWidth-xPosition>2-skewedness) for yPolarity in range(-1,3,2) if ((position>=(1+skewedness)*boardWidth) if yPolarity==-1 else (position<boardSquares-(1+skewedness)*boardWidth))] #do not touch (you will break it)
     return moves
 def precomputeKnightMoves():
     return [findPieceMoves(5,i,[[0,0]]*boardSquares) for i in range(boardSquares)]
 knightMovesPrecomputed=0
 precomputedKnightMoves=precomputeKnightMoves()
 knightMovesPrecomputed=1
+#print("precomputed knight moves:",precomputedKnightMoves)
 
-print("precomputed knight moves:",precomputedKnightMoves)
-#piecePermutations=[[[0,0]]*(boardSquares-2)]
+symmetryMode=(input("Would you like reduction by eightfold symmetry?")=="y")
 statesWithoutTurns=[] #list of all legal states (permutations of pieces) as lists of piece types and colours (0 if no piece)
 stateSquareAttacks=[] #list of whether each square is attacked and (if so) by whom
 stateChecks=[]
 for r in combinations:
     piecePermutations=generatePermutations(r,boardSquares-2-len(r))
+    pawns=[6,0] in r or [6,1] in r #I hate pawns so much
+    leftHalf=[x+y*boardWidth for y in range(boardWidth) for x in range(math.ceil(boardWidth/2))]
+    whiteKingRange=(leftHalf if pawns else [x+y*boardWidth for y in range(math.ceil(boardWidth/2)) for x in range(y,math.ceil(boardWidth/2))]) if symmetryMode==1 else range(boardSquares)
     #print("permutation lengths (should be "+str(boardSquares)+"):",[len(i) for i in piecePermutations])
-    for i in range(boardSquares):
+    for i in whiteKingRange:
         iKingMoves=findPieceMoves(1,i,[[0,0]]*boardSquares) #the new Apple product
-        for j in range(boardSquares):
+        blackKingRange=(whiteKingRange if i==(boardSquares-1)/2 else (leftHalf if i%boardWidth==(boardWidth-1)/2 else ([x+y*boardWidth for y in range(boardWidth) for x in range(y,boardWidth)] if i%boardWidth==math.floor(i/boardWidth) and pawns==0 else range(boardSquares)))) if symmetryMode==1 else range(boardSquares)
+        for j in blackKingRange:
             if not (i==j or j in iKingMoves):
                 kingState=[[int(k==i or k==j),int(k==j)] for k in range(boardSquares)] #each square in each state list (in the list of them) is a list of the piece and its colour
                 fixedKingPermutations=[] #not because the original ones are broken but because the kings are fixed in place
@@ -118,7 +99,24 @@ stateSquareAttacks*=2 #state formatted [[attacked by white?,attacked by black?] 
 stateChecks*=2
 #print("state checks",[[j[0],i] for i,j in zip(stateChecks,states)])
 stateMoves=[[[j for j in findPieceMoves(t[1][i][0],i,t) if (t[1][j][0]==0 or t[1][i][1]!=t[1][j][1]) and (s[j][1-t[0]]==0 if t[1][i][0]==1 else t[1][j][0]!=1)] if t[1][i][1]==t[0] else [] for i in range(boardSquares)] for s,t in zip(stateSquareAttacks,states)] #is list of lists of lists of destination squares for each piece #the i list comprehension if statement would have (s[1][i][0]!=0 and ) but is now superseded by findPieceMoves
-stateTransitions=[[states.index([1-t[0],[[0,0] if k==i else (t[1][i] if k==p else r) for k,r in enumerate(t[1])]]) for i,q in enumerate(s) for p in q] for s,t in zip(stateMoves,states)]
+
+def symmetry(position):
+    if symmetryMode==0:
+        return position
+    kingPositions=[position.index([1,i]) for i in range(2)]
+    halfWidth=math.floor(boardWidth/2)
+    if kingPositions[0]%boardWidth>halfWidth or (boardWidth%2==1 and kingPositions[0]%boardWidth==halfWidth and kingPositions[1]%boardWidth>halfWidth): #flip white king to left half (or flip black king to left half when white king in centre file)
+        position=[position[boardWidth-1-(i%boardWidth)+math.floor(i/boardWidth)*boardWidth] for i in range(len(position))]
+    if [6,0] in position or [6,1] in position:
+        return position
+    if math.floor(kingPositions[0]/boardWidth)>halfWidth or (boardWidth%2==1 and math.floor(kingPositions[0]/boardWidth)==halfWidth and math.floor(kingPositions[1]/boardWidth)>halfWidth): #flip white king to bottom half (or black king if white in centre row (for subsequent flip)))
+        position=[position[i%boardWidth+(boardWidth-1-math.floor(i/boardWidth))*boardWidth] for i in range(len(position))]
+    kingPositions=[position.index([1,i]) for i in range(2)]
+    if kingPositions[0]%boardWidth<math.floor(kingPositions[0]/boardWidth) or (kingPositions[0]%boardWidth==math.floor(kingPositions[0]/boardWidth) and kingPositions[1]%boardWidth<math.floor(kingPositions[1]/boardWidth)): #flip white king to bottom-right diagonal half of bottom-left quarter
+        position=[position[math.floor(i/boardWidth)+i%boardWidth*boardWidth] for i in range(len(position))]
+    return position
+
+stateTransitions=[[states.index([1-t[0],symmetry([[0,0] if k==i else (t[1][i] if k==p else r) for k,r in enumerate(t[1])])]) for i,q in enumerate(s) for p in q] for s,t in zip(stateMoves,states)]
 #print("transitions between",len(states),"states:",stateTransitions)
 stateIllegalities=[(i[1-j[0]]==1) for i,j in zip(stateChecks,states)]
 #print("state illegalities",stateIllegalities)
@@ -133,7 +131,7 @@ for i,j in zip(stateIllegalities,states):
         prunedStates+=1
 def pruneIllegalities(stateList):
     return [j for i,j in zip(stateIllegalities,stateList) if i==0]
-#print(len(states),"states pruned to",prunedStates)
+print(len(states),"states pruned to",prunedStates)
 #print("state new IDs",stateNewIDs)
 states=pruneIllegalities(states)
 stateSquareAttacks=pruneIllegalities(stateSquareAttacks)
@@ -175,7 +173,7 @@ while i==0 or stateChanges!=0:
                     bestMoves=candidateMoves
             blitStateWinningnesses.append([bestWinningness,bestMoves])
     stateChanges=sum(int(b!=w) for b,w in zip(blitStateWinningnesses,stateWinningnesses))
-    print(stateChanges,"states changed")
+    #print(stateChanges,"states changed")
     stateWinningnesses=blitStateWinningnesses
     #print("new state winningnesses:",stateWinningnesses)
     #printWinningnesses()

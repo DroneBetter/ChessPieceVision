@@ -1,5 +1,6 @@
 import math, random
 from sympy.utilities.iterables import multiset_permutations, combinations #generates permutations where elements are identical, from https://stackoverflow.com/a/60252630
+from itertools import repeat
 
 boardWidth=3
 boardSquares=boardWidth**2
@@ -61,26 +62,28 @@ knightMovesPrecomputed=1
 symmetryMode=(input("Would you like reduction by eightfold symmetry?")=="y")
 statesWithoutTurns=[] #list of all legal states (permutations of pieces) as lists of piece types and colours (0 if no piece)
 stateKingPositions=[]
+stateSquareAttacks=[]
 leftHalf=[x+y*boardWidth for y in range(boardWidth) for x in range(math.ceil(boardWidth/2))]
-for r in combinations:
-    piecePermutations=list(generatePermutations(r,boardSquares-2-len(r)))
-    #print([i for i in piecePermutations]) #can't be directly printed due to being a generator object
-    pawns=[6,0] in r or [6,1] in r #I hate pawns so much
-    whiteKingRange=(leftHalf if pawns else [x+y*boardWidth for y in range(math.ceil(boardWidth/2)) for x in range(y,math.ceil(boardWidth/2))]) if symmetryMode==1 else range(boardSquares)
+kingPawns=-1
+def generateKingPositions(pawns):
+    global kingStates
+    global kingPawns
+    functionKingPositions=[]
+    kingPawns=pawns #like king prawns
+    whiteKingRange=(leftHalf if pawns else [x+y*boardWidth for x in range(math.ceil(boardWidth/2)) for y in range(x+1)]) if symmetryMode==1 else range(boardSquares)
     #print("permutation lengths (should be "+str(boardSquares)+"):",[len(i) for i in piecePermutations])
-    for i in whiteKingRange:
-        iKingMoves=findPieceMoves(1,i,((0,0),)*boardSquares) #the new Apple product
-        blackKingRange=(whiteKingRange if i==(boardSquares-1)/2 else (leftHalf if i%boardWidth==(boardWidth-1)/2 else ([x+y*boardWidth for y in range(boardWidth) for x in range(y,boardWidth)] if i%boardWidth==i//boardWidth and pawns==0 else range(boardSquares)))) if symmetryMode==1 else range(boardSquares)
-        for j in blackKingRange:
-            if not (i==j or j in iKingMoves):
-                kingState=[(int(k==i or k==j),int(k==j)) for k in range(boardSquares)] #each square in each state list (in the list of them) is a list of the piece and its colour
-                fixedKingPermutations=[] #not because the original ones are broken but because the kings are fixed in place
-                for q in piecePermutations:
-                    m=-1
-                    fixedKingPermutations.append([l if l[0]==1 else q[m:=m+1] for l in kingState]) #the walrus operator is quite cute I would say
-                #print("fixed-king permutation states' lengths (should be",str(boardSquares)+"):",[len(i) for i in fixedKingPermutations])
-                statesWithoutTurns+=fixedKingPermutations #each square in each state list (in the list of them) is a list of the piece and its colour
-                stateKingPositions+=((i,j),)*len(fixedKingPermutations)
+    functionKingPositions=[(i,j) for i,iKingMoves in zip(whiteKingRange,[findPieceMoves(1,i,((0,0),)*boardSquares) for i in whiteKingRange]) for j in ((whiteKingRange if i==(boardSquares-1)/2 else (leftHalf if i%boardWidth==(boardWidth-1)/2 else ([x+y*boardWidth for x in range(boardWidth) for y in range(x+1)] if i%boardWidth==i//boardWidth and pawns==0 else range(boardSquares)))) if symmetryMode==1 else range(boardSquares)) if not (i==j or j in iKingMoves)]
+    kingStates=[[(int(k==i or k==j),int(k==j)) for k in range(boardSquares)] for i,j in functionKingPositions] #each square in each state list (in the list of them) is a list of the piece and its colour
+    return functionKingPositions
+
+for r in combinations:
+    piecePermutations=tuple(generatePermutations(r,boardSquares-2-len(r))) #leaving as generator expression causes many problems
+    #print([i for i in piecePermutations]) #can't be directly printed due to being a generator object
+    pawns=[6,0] in r or [6,1] in r #pawns prevent eightfold symmetry (I hate them so much)
+    if pawns!=kingPawns:
+        additionalKingPositions=generateKingPositions(pawns)
+    stateKingPositions+=[i for i in additionalKingPositions for _ in range(len(piecePermutations))]
+    statesWithoutTurns+=[[l if l[0]==1 else next(m) for l in k] for k in kingStates for m in map(iter,piecePermutations)] #each square in each state list (in the list of them) is a list of the piece and its colour
 stateSquareAttacks=[[[int((k,l) in attackedSquares) for l in range(2)] for k in range(boardSquares)] for q,attackedSquares in zip(statesWithoutTurns,[set((l,s[1]) for k,s in enumerate(q) for l in findPieceMoves(s[0],k,q)) for q in statesWithoutTurns])] #like states list but without turn to move and with [attacked by white,attacked by black] for each square
 #will have to have exception condition if pawns added (due to not all destination squares being attacked)
 stateChecks=[[r[stateKingPositions[q][l]][1-l] for l in range(2)] for q,r in enumerate(stateSquareAttacks)]
@@ -93,34 +96,32 @@ stateSquareAttacks*=2 #state formatted [[attacked by white?,attacked by black?] 
 stateKingPositions*=2
 stateChecks*=2
 #print("state checks",[[j[0],i] for i,j in zip(stateChecks,states)])
-stateMoves=[[[j for j in findPieceMoves(t[1][i][0],i,t) if (t[1][j][0]==0 or t[1][i][1]!=t[1][j][1]) and (s[j][1-t[0]]==0 if t[1][i][0]==1 else t[1][j][0]!=1)] if t[1][i][1]==t[0] else [] for i in range(boardSquares)] for s,t in zip(stateSquareAttacks,states)] #is list of lists of lists of destination squares for each piece #the i list comprehension if statement would have (s[1][i][0]!=0 and ) but is now superseded by findPieceMoves
 
 def symmetry(position):
     if symmetryMode==0:
         return position
-    def findKings():
-        return [position.index((1,i)) for i in range(2)] #doesn't use stateKingPositions because positions without symmetry applied aren't included
     def firstDisparity(both): #from https://stackoverflow.com/a/15830697
         return next(((a[0]-b[0])*2+(a[1]-b[1]) for i, (a, b) in enumerate(both) if a!=b), 0)
-    kingPositions=findKings()
+    kingPositions=[position.index((1,i)) for i in range(2)] #doesn't use stateKingPositions because it doesn't include positions without symmetry applied
+    spatialPositions=[(i%boardWidth,i//boardWidth) for i in kingPositions]
     halfWidth=(boardWidth-1)//2
-    if kingPositions[0]%boardWidth>halfWidth or (boardWidth%2==1 and kingPositions[0]%boardWidth==halfWidth and (kingPositions[1]%boardWidth>halfWidth or (kingPositions[1]%boardWidth==halfWidth and firstDisparity([[position[x*(1-2*i)-i+(y+i)*boardWidth] for i in range(2)] for x in range(halfWidth) for y in range(boardWidth)])<0))):
-        position=[position[boardWidth-1-(i%boardWidth)+i//boardWidth*boardWidth] for i in range(len(position))] #flip white king to left half (or flip black king to left half when white king in centre file)
-    if [6,0] in position or [6,1] in position:
+    pawns=(6,0) in position or (6,1) in position
+    for d in range(1+(not pawns)): #iterating through dimensions (pretty cool)
+        if spatialPositions[0][d]>halfWidth or (boardWidth%2==1 and spatialPositions[0][d]==halfWidth and (spatialPositions[1][d]>halfWidth or (spatialPositions[1][d]==halfWidth and firstDisparity([[position[x*(1-2*i)-i+(y+i)*boardWidth if d==0 else y+boardWidth*(x*(1-2*i)+i*(boardWidth-1))] for i in range(2)] for x in range(halfWidth) for y in range(boardWidth)])<0))):
+            position=[position[boardWidth-1-(i%boardWidth)+i//boardWidth*boardWidth if d==0 else i%boardWidth+(boardWidth-1-i//boardWidth)*boardWidth] for i in range(len(position))] #flip white king to left half (or flip black king to left half when white king in centre file)
+            spatialPositions=[(boardWidth-1-i[0],i[1]) if d==0 else (i[0],boardWidth-1-i[1]) for i in spatialPositions]
+            kingPositions=[i[0]+i[1]*boardWidth for i in spatialPositions]
+    if pawns:
         return position
-    if kingPositions[0]//boardWidth>halfWidth or (boardWidth%2==1 and kingPositions[0]//boardWidth==halfWidth and (kingPositions[1]//boardWidth>halfWidth or (kingPositions[1]//boardWidth==halfWidth and firstDisparity([[position[x+boardWidth*(y*(1-2*i)+i*(boardWidth-1))] for i in range(2)] for x in range(halfWidth) for y in range(boardWidth)])<0))): #flip white king to bottom half (or black king if white in centre row (for subsequent flip)))
-        position=[position[i%boardWidth+(boardWidth-1-i//boardWidth)*boardWidth] for i in range(len(position))]
-    kingPositions=findKings()
-    if kingPositions[0]%boardWidth<kingPositions[0]//boardWidth or (kingPositions[0]%boardWidth==kingPositions[0]//boardWidth and (kingPositions[1]%boardWidth<kingPositions[1]//boardWidth or (kingPositions[1]%boardWidth==kingPositions[1]//boardWidth and firstDisparity([[position[x*(boardWidth if i else 1)+y*(1 if i else boardWidth)] for i in range(2)] for x in range(halfWidth) for y in range(x)])<0))): #flip white king to bottom-right diagonal half of bottom-left quarter
+    if spatialPositions[0][0]<spatialPositions[0][1] or (spatialPositions[0][0]==spatialPositions[0][1] and (spatialPositions[1][0]<spatialPositions[1][1] or (spatialPositions[1][0]==spatialPositions[1][1] and firstDisparity([[position[x*(boardWidth if i else 1)+y*(1 if i else boardWidth)] for i in range(2)] for x in range(boardWidth) for y in range(x)])<0))): #flip white king to bottom-right diagonal half of bottom-left quarter
         position=[position[i//boardWidth+i%boardWidth*boardWidth] for i in range(len(position))]
     return position
 
-stateTransitions=[[states.index([1-t[0],symmetry([(0,0) if k==i else (t[1][i] if k==p else r) for k,r in enumerate(t[1])])]) for i,q in enumerate(s) for p in q] for s,t in zip(stateMoves,states)]
 #print("transitions between",len(states),"states:",stateTransitions)
 stateIllegalities=[2 if c[1-s[0]]==1 else (s[1]!=symmetry(s[1])) for c,s in zip(stateChecks,states)] #0 is good, 1 is incorrect symmetry, 2 is illegal
 #print("state illegalities",stateIllegalities)
-k=-1
-stateNewIDs=[None if i==2 else (states.index([s[0],symmetry(s[1])]) if i==1 else (k:=k+1)) for s,i in zip(states,stateIllegalities)]
+k=iter(range(len(states)))
+stateNewIDs=[None if i==2 else (states.index([s[0],symmetry(s[1])]) if i==1 else next(k)) for s,i in zip(states,stateIllegalities)]
 stateNewIDs=[stateNewIDs[s] if i==1 else s for s,i in zip(stateNewIDs,stateIllegalities)]
 prunedStates=len([i for i in stateNewIDs if i!=None])
 def pruneIllegalities(stateList):
@@ -131,9 +132,11 @@ states=pruneIllegalities(states)
 stateSquareAttacks=pruneIllegalities(stateSquareAttacks)
 stateKingPositions=pruneIllegalities(stateKingPositions)
 stateChecks=pruneIllegalities(stateChecks)
-#stateMoves=[[[m[1] for m in s if m[0]==i] for i in range(boardSquares)] for s in [[m[k] for k,l in enumerate(j) if stateIllegalities[k]==0] for i,j,m in zip(stateIllegalities,stateTransitions,[[[i,k] for i,j in enumerate(s) for k in j] for s in stateMoves]) if i==0]] #would use this one except stateMoves is only currently used to convert a list of an origin and destination to a state ID (for which being parallel with stateTransitions is more efficient)
-stateMoves=[[m[k] for k in range(len(j)) if stateIllegalities[k]!=2] for i,j,m in zip(stateIllegalities,stateTransitions,[[[i,k] for i,j in enumerate(s) for k in j] for s in stateMoves]) if i==0]
-stateTransitions=[[stateNewIDs[k] for k in j if stateIllegalities[k]==0] for i,j in zip(stateIllegalities,stateTransitions) if i==0]
+
+stateMoves=[[[j for j,k in [(j,t[1][j]) for j in findPieceMoves(q[0],i,t)] if (k[0]==0 or q[1]!=k[1]) and (s[j][1-t[0]]==0 if q[0]==1 else t[1][j][0]!=1)] if q[1]==t[0] else [] for i,q in enumerate(t[1])] for s,t in zip(stateSquareAttacks,states)] #is list of lists of lists of destination squares for each piece
+stateTransitions=[[states.index([1-t[0],symmetry([(0,0) if k==i else (t[1][i] if k==p else r) for k,r in enumerate(t[1])])]) for i,q in enumerate(s) for p in q] for s,t in zip(stateMoves,states)]
+#stateMoves=[[[m[1] for m in s if m[0]==i] for i in range(boardSquares)] for s in [[m[k] for k,l in enumerate(j)] for j,m in zip(stateTransitions,[[[i,k] for i,j in enumerate(s) for k in j] for s in stateMoves])]] #would use this one except stateMoves is only currently used to convert a list of an origin and destination to a state ID (for which being parallel with stateTransitions is more efficient)
+stateMoves=[[m[k] for k in range(len(j))] for j,m in zip(stateTransitions,[[[i,k] for i,j in enumerate(s) for k in j] for s in stateMoves])]
 
 def printWinningnesses(): #could be done inline in the regression loop also to be slightly more efficient (though its performance impact is negligible) and to make it tell you as it finds them instead of at the end (which could take hours for large tablebases)
     i=0
@@ -322,9 +325,7 @@ else:
             magnitude=math.sqrt(sum(abs(i) for i in arrowAccs))
             if magnitude!=0:
                 arrowAccs=[i/magnitude for i in arrowAccs]
-            for di in range(1,4):
-                cameraAngle[1][di]+=arrowAccs[di]*gain*angularVelocityConversionFactor
-                cameraAngle[1][di]/=1+drag #cameraOrientation[1][0] isn't used (because they're yaw,pitch,roll but they pretend to be i,j,k (no w))
+            cameraAngle[1][1:4]=[(cameraAngle[1][di]+arrowAccs[di]*gain*angularVelocityConversionFactor)/(1+drag) for di in range(1,4)] #cameraAngle[1][0] isn't used (because they're yaw,pitch,roll velocity corresponding with i,j,k (no w))
             mouserino=[cameraAngle[1][1],cameraAngle[1][2]-mouseChange[1],cameraAngle[1][3]+mouseChange[0]] #temporarily less elegant so rotateByScreen can use comprehension
             cameraAngle[0]=rotateByScreen(cameraAngle[0],mouserino)
         squareScreenPositions=findSquareScreenPositions()
@@ -338,10 +339,9 @@ else:
                 drawLine(sc,squareScreenPositions[l],squareColours[st[0]])
         if clickDone:
             mousePos=mouse.get_pos()
-        for i in renderOrder:
-            k=squares[i]
-            drawShape(k[1],squareScreenPositions[i],k[3],1)
-            if clickDone and i!=boardLastPrinted and sum((squareScreenPositions[i][di]-mousePos[di])**2 for di in range(2))<k[1][0]**2: #the range(2) will eventually have to be changed when I get a 3D monitor
+        for i,j,k in [(i,squareScreenPositions[i],squares[i]) for i in renderOrder]:
+            drawShape(k[1],j,k[3],1)
+            if clickDone and i!=boardLastPrinted and sum((j[di]-mousePos[di])**2 for di in range(2))<k[1][0]**2: #the range(2) will eventually have to be changed when I get a 3D monitor
                 print(printBoard(states[i][1]))
                 boardLastPrinted=i
         pygame.display.flip()

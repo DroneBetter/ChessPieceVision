@@ -2,7 +2,7 @@ import math, random
 from sympy.utilities.iterables import multiset_permutations, combinations #generates permutations where elements are identical, from https://stackoverflow.com/a/60252630
 from itertools import repeat
 
-boardWidth=3
+boardWidth=4
 boardSquares=boardWidth**2
 board=[]*boardSquares
 pieceNames=["empty","king","queen","rook","bishop","knight","pawn"]
@@ -97,7 +97,7 @@ stateKingPositions*=2
 stateChecks*=2
 #print("state checks",[[j[0],i] for i,j in zip(stateChecks,states)])
 
-def symmetry(position):
+def symmetry(position,*reflectionReport):
     if symmetryMode==0:
         return position
     def firstDisparity(both): #from https://stackoverflow.com/a/15830697
@@ -106,16 +106,25 @@ def symmetry(position):
     spatialPositions=[(i%boardWidth,i//boardWidth) for i in kingPositions]
     halfWidth=(boardWidth-1)//2
     pawns=(6,0) in position or (6,1) in position
+    if reflectionReport==1:
+        reflections=[0]*3
     for d in range(1+(not pawns)): #iterating through dimensions (pretty cool)
         if spatialPositions[0][d]>halfWidth or (boardWidth%2==1 and spatialPositions[0][d]==halfWidth and (spatialPositions[1][d]>halfWidth or (spatialPositions[1][d]==halfWidth and firstDisparity([[position[x*(1-2*i)-i+(y+i)*boardWidth if d==0 else y+boardWidth*(x*(1-2*i)+i*(boardWidth-1))] for i in range(2)] for x in range(halfWidth) for y in range(boardWidth)])<0))):
             position=[position[boardWidth-1-(i%boardWidth)+i//boardWidth*boardWidth if d==0 else i%boardWidth+(boardWidth-1-i//boardWidth)*boardWidth] for i in range(len(position))] #flip white king to left half (or flip black king to left half when white king in centre file)
             spatialPositions=[(boardWidth-1-i[0],i[1]) if d==0 else (i[0],boardWidth-1-i[1]) for i in spatialPositions]
             kingPositions=[i[0]+i[1]*boardWidth for i in spatialPositions]
+            if reflectionReport==1:
+                reflections[d]=1
     if pawns:
         return position
     if spatialPositions[0][0]<spatialPositions[0][1] or (spatialPositions[0][0]==spatialPositions[0][1] and (spatialPositions[1][0]<spatialPositions[1][1] or (spatialPositions[1][0]==spatialPositions[1][1] and firstDisparity([[position[x*(boardWidth if i else 1)+y*(1 if i else boardWidth)] for i in range(2)] for x in range(boardWidth) for y in range(x)])<0))): #flip white king to bottom-right diagonal half of bottom-left quarter
         position=[position[i//boardWidth+i%boardWidth*boardWidth] for i in range(len(position))]
-    return position
+        if reflectionReport==1:
+            reflections[2]=1
+    if reflectionReport==1:
+        return [position,reflections]
+    else:
+        return position
 
 #print("transitions between",len(states),"states:",stateTransitions)
 stateIllegalities=[2 if c[1-s[0]]==1 else (s[1]!=symmetry(s[1])) for c,s in zip(stateChecks,states)] #0 is good, 1 is incorrect symmetry, 2 is illegal
@@ -133,20 +142,27 @@ stateSquareAttacks=pruneIllegalities(stateSquareAttacks)
 stateKingPositions=pruneIllegalities(stateKingPositions)
 stateChecks=pruneIllegalities(stateChecks)
 
-stateMoves=[[[j for j,k in [(j,t[1][j]) for j in findPieceMoves(q[0],i,t)] if (k[0]==0 or q[1]!=k[1]) and (s[j][1-t[0]]==0 if q[0]==1 else t[1][j][0]!=1)] if q[1]==t[0] else [] for i,q in enumerate(t[1])] for s,t in zip(stateSquareAttacks,states)] #is list of lists of lists of destination squares for each piece
+stateMoves=[[[j for j,k in [(j,t[1][j]) for j in findPieceMoves(q[0],i,t)] if (k[0]==0 or q[1]!=k[1]) and (s[j][1-t[0]]==0 if q[0]==1 else t[1][j][0]!=1)] if q[1]==t[0] else [] for i,q in enumerate(t[1])] for s,t in zip(stateSquareAttacks,states)] #is list of lists of lists of destination squares for each piece #king can't move to a currently-attacked square (will have to be changed if hopping pieces or something are added, where squares' attackednesses change depending on occupancy)
+print("state moves done")
 stateTransitions=[[states.index([1-t[0],symmetry([(0,0) if k==i else (t[1][i] if k==p else r) for k,r in enumerate(t[1])])]) for i,q in enumerate(s) for p in q] for s,t in zip(stateMoves,states)]
+print("state transitions done")
+stateParents=[[]]*len(states)
+for s in stateTransitions:
+    for t in s:
+        stateParents[t].append(s)
+print("state parents done")
 #stateMoves=[[[m[1] for m in s if m[0]==i] for i in range(boardSquares)] for s in [[m[k] for k,l in enumerate(j)] for j,m in zip(stateTransitions,[[[i,k] for i,j in enumerate(s) for k in j] for s in stateMoves])]] #would use this one except stateMoves is only currently used to convert a list of an origin and destination to a state ID (for which being parallel with stateTransitions is more efficient)
 stateMoves=[[m[k] for k in range(len(j))] for j,m in zip(stateTransitions,[[[i,k] for i,j in enumerate(s) for k in j] for s in stateMoves])]
+print("state moves reformatted")
 
 def printWinningnesses(): #could be done inline in the regression loop also to be slightly more efficient (though its performance impact is negligible) and to make it tell you as it finds them instead of at the end (which could take hours for large tablebases)
     i=0
     while i==0 or matesInI!=[0]*3:
-        matesInI=[sum(1 for j in stateWinningnesses if j[0]==w and j[1]==i) for w in range(-1,2)]
+        matesInI=[sum(1 for j in stateWinningnesses if j==(w,i)) for w in range(-1,2)]
         if matesInI!=[0]*3:
             print("there are",matesInI[1],"stalemates in "+str(i)+" and",matesInI[2*(i%2)],("wins in" if i%2==1 else "losses in"),i) #in terms of ply
         i+=1
-stateWinningnesses=[[(0 if w==None else w),(None if w==None else 0)] for w in \
-    [-c[s[0]] if t==[] else None for s,t,a,c in zip(states,stateTransitions,stateSquareAttacks,stateChecks)]] #0 if drawing, 1 if winning, -1 if losing (like engine evaluations but only polarity (and relative like Syzygy, not absolute like engines), not magnitude (due to infinite intelligence))
+stateWinningnesses=[(-c[s[0]],0) if t==[] else (0,None) for s,t,c in zip(states,stateTransitions,stateChecks)] #0 if drawing, 1 if winning, -1 if losing (like engine evaluations but not magnitude (due to infinite intelligence), only polarity (and relative to side to move like Syzygy, not absolute like engines))
 #print(stateWinningnesses)
 #it assumes each position is drawing until it learns otherwise (because infinite loops with insufficient material to forcibly stalemate (and be marked as such by the regression) are draws)
 #print("state winningnesses:",stateWinningnesses)
@@ -169,7 +185,7 @@ while i==0 or stateChanges!=0:
                 if candidateWinningness>=bestWinningness and (candidateWinningness>bestWinningness or (candidateMoves>bestMoves if candidateWinningness==-1 else (candidateMoves!=None and (bestMoves==None or candidateMoves<bestMoves)))): #if neither side can win, it will attempt to stalemate as quickly as possible (but still prolongs mate if losing and does it as quickly as possible if winning)
                     bestWinningness=candidateWinningness
                     bestMoves=candidateMoves
-            blitStateWinningnesses.append([bestWinningness,bestMoves])
+            blitStateWinningnesses.append((bestWinningness,bestMoves))
     stateChanges=sum(int(b!=w) for b,w in zip(blitStateWinningnesses,stateWinningnesses))
     #print(stateChanges,"states changed")
     stateWinningnesses=blitStateWinningnesses
@@ -195,6 +211,37 @@ def printBoard(board):
             output+="\033[F"+stateToPrint
             stateToPrint=""
     return output+"\033["+str(boardWidth-1)+"B"
+def initialisePygame(guiMode):
+    global clock
+    clock=pygame.time.Clock()
+    pygame.init()
+    global black
+    black=(0,0,0)
+    global squareColours
+    squareColours=((236,217,185),(174,137,104),(255,255,255),(0,0,0)) #using lichess's square colours but do not tell lichess
+    global dims
+    dims=3
+    global size
+    size=[1050]*dims
+    if guiMode==1: #guiMode van Russom
+        size=[i//boardWidth*boardWidth for i in size]
+    global screen
+    screen = pygame.display.set_mode(size[:2])
+    global drawShape
+    def drawShape(size,pos,colour,shape):
+        if shape==0:
+            pygame.draw.rect(screen,colour,pos+size)
+        else:
+            pygame.draw.circle(screen, colour, pos, size[0])
+    global drawLine
+    def drawLine(initial,destination,colour):
+        pygame.draw.line(screen,colour,initial,destination)
+    global mouse
+    mouse=pygame.mouse
+    global run
+    run=True
+    global FPS
+    FPS=60
 
 if input("Would you like to play chess with God (y) or see the state transition diagram (n)? ")=="y":
     def whereIs(square):
@@ -203,43 +250,99 @@ if input("Would you like to play chess with God (y) or see the state transition 
         if move[0] in fileLetters:
             return [whereIs(move[2*i:2*i+2]) for i in range(2)]
         elif move[0] in pieceSymbols[1]:
+            pieceType=pieceSymbols[1].index(move[0])
             destination=whereIs(move[-2:])
             restrictedRank=None
             restrictedFile=None
             if len(move)>3:
                 restrictionIndex=1
-                if move[restrictionIndex] not in fileLetters:
-                    restrictedRank=int(move[restrictionIndex])
-                    restrictionIndex+=1
                 if move[restrictionIndex] in fileLetters:
                     restrictedFile=fileLetters.index(move[restrictionIndex])
+                    restrictionIndex+=1
+                if move[restrictionIndex] not in fileLetters:
+                    restrictedRank=int(move[restrictionIndex])
             #print(pieceSymbols[1].index(move[0]))
             for i,p in enumerate(state[1]):
-                if p[0]==pieceSymbols[1].index(move[0]) and p[1]==state[0] and [i,destination] in stateMoves[stateIndex] and (restrictedFile==None or i%boardWidth==restrictedFile) and (restrictedRank==None or floor(i/boardWidth)==restrictedRank):
+                if p==(pieceType,state[0]) and [i,destination] in stateMoves[stateIndex] and (restrictedFile==None or i%boardWidth==restrictedFile) and (restrictedRank==None or floor(i/boardWidth)==restrictedRank):
                     #print(i,p[0],destination)
                     return [i,destination]
-    currentIndex=random.randrange(len(states))
-    humanColour=states[currentIndex][0] #it includes a u because this is a British program (property of her majesty)
-    while True:
-        currentState=states[currentIndex]
-        print(printBoard(currentState[1]))
-        if currentState[0]==humanColour:
-            move=input("state "+str(currentIndex)+", "+("white" if currentState[0]==0 else "black")+" to move. ")
-            currentIndex=stateTransitions[currentIndex][stateMoves[currentIndex].index(parseMove(move,currentState,currentIndex))]
-        else:
-            tablebaseMoves=[i for i in stateTransitions[currentIndex] if stateWinningnesses[i]==[0-stateWinningnesses[currentIndex][0],stateWinningnesses[currentIndex][1]-1]]
-            print("state "+str(currentIndex)+", I play",("the only" if len(tablebaseMoves)==1 else "one of "+str(len(tablebaseMoves))),str(["losing","drawing","winning"][stateWinningnesses[currentIndex][0]+1]),"move"+"s"*(len(tablebaseMoves)!=1)+".")
-            currentIndex=tablebaseMoves[random.randrange(len(tablebaseMoves))]
+    def isTablebase(i):
+        #print(stateWinningnesses[i],(-stateWinningnesses[currentIndex][0],stateWinningnesses[currentIndex][1]-1))
+        return stateWinningnesses[i][0]==0 if stateWinningnesses[currentIndex][1]==None else stateWinningnesses[i]==(-stateWinningnesses[currentIndex][0],stateWinningnesses[currentIndex][1]-1)
+    guiMode=(input("Would you like a GUI? (y/n)")=="y")
+    if guiMode:
+        def renderBoard(state,thisStateMoves):
+            global clickedSquare
+            for i,s in enumerate(state):
+                squarePosition=[i%boardWidth,(boardWidth-1-i//boardWidth)]
+                drawShape([squareSize]*2,[i*squareSize for i in squarePosition],(((0,255,0) if isTablebase(stateTransitions[currentIndex][thisStateMoves.index([selectedSquare,i])]) else (255,0,0)) if selectedness==1 and [selectedSquare,i] in thisStateMoves else squareColours[sum(squarePosition)%2]),0)
+                if s!=(0,0):
+                    if s[0]==1:
+                        drawShape([squareSize*3/4]*2,[(i+1/8)*squareSize for i in squarePosition],((0,255,0) if (i==selectedSquare and selectedness==1) else squareColours[2+s[1]]),0)
+                    else:
+                        drawShape([squareSize*3/8]*2,[(i+1/2)*squareSize for i in squarePosition],((0,255,0) if (i==selectedSquare and selectedness==1) else squareColours[2+s[1]]),1)
+                if clickDone and all(0<mousePos[di]/squareSize-squarePosition[di]<1 for di in range(2)):
+                    clickedSquare=i
+        import pygame
+        from pygame.locals import *
+        initialisePygame(1)
+        selectedSquare=-1
+        clickedSquare=-1
+        selectedness=0
+        squareSize=min(size)//boardWidth
+    run=True
+    while run:
+        moves=1
+        currentIndex=random.randrange(len(states))
+        humanColour=states[currentIndex][0] #it includes a u because this is a British program (property of her majesty)
+        while moves>0 and run:
+            currentState=states[currentIndex]
+            moves=len(stateMoves[currentIndex])
+            print(printBoard(currentState[1]))
+            if moves==0:
+                print(("Human" if states[0]==humanColour else "God"),"is",("checkmated" if stateChecks[currentIndex][currentState[0]]==1 else "stalemated"))
+            else:
+                if currentState[0]==humanColour:
+                    thisStateMoves=stateMoves[currentIndex]
+                    if guiMode:
+                        moveDone=False
+                        while not moveDone:
+                            clickDone=False
+                            for event in pygame.event.get():
+                                run=event.type != pygame.QUIT
+                                clickDone=event.type == pygame.MOUSEBUTTONUP
+                            screen.fill(black)
+                            if clickDone:
+                                mousePos=mouse.get_pos()
+                                #print([di/squareSize for di in mousePos])
+                            renderBoard(currentState[1],thisStateMoves)
+                            if clickedSquare!=-1:
+                                if currentState[1][clickedSquare][0]==0 or currentState[1][clickedSquare][1]!=humanColour:
+                                    if [selectedSquare,clickedSquare] in thisStateMoves:
+                                        moveDone=True
+                                        currentIndex=stateTransitions[currentIndex][thisStateMoves.index([selectedSquare,clickedSquare])]
+                                        #humanColour=1-humanColour
+                                else:
+                                    selectedness=((not selectedness) if selectedSquare==clickedSquare else True)
+                                    selectedSquare=clickedSquare
+                                    clickedSquare=-1
+                            pygame.display.flip()
+                            clock.tick(FPS)
+                    else:
+                        move=input("state "+str(currentIndex)+", "+("white" if currentState[0]==0 else "black")+" to move. ")
+                        print(thisStateMoves,parseMove(move,currentState,currentIndex))
+                        currentIndex=stateTransitions[currentIndex][thisStateMoves.index(parseMove(move,currentState,currentIndex))]
+                else:
+                    tablebaseMoves=[i for i in stateTransitions[currentIndex] if isTablebase(i)]
+                    print(stateWinningnesses[currentIndex])
+                    print("state "+str(currentIndex)+", I play",("the only" if len(tablebaseMoves)==1 else "one of "+str(len(tablebaseMoves))),str(["losing","drawing","winning"][stateWinningnesses[currentIndex][0]+1]),"move"+"s"*(len(tablebaseMoves)!=1)+".")
+                    currentIndex=tablebaseMoves[random.randrange(len(tablebaseMoves))]
+    
+    else: exit()
 else:
     import pygame
     from pygame.locals import *
-    clock=pygame.time.Clock()
-    pygame.init()
-    black=(0,0,0)
-    squareColours=((236,217,185),(174,137,104)) #using lichess's square colours but do not tell lichess
-    dims=3
-    size=[1050]*dims
-    screen = pygame.display.set_mode(size[:2])
+    initialisePygame(0)
     cameraPosition=[i/2 for i in size]
     cameraAngle=[[1]+[0]*3]*2
     clickDone=0
@@ -247,7 +350,6 @@ else:
     rad=size[0]/len(states)
     #bitColours=[[int(255*(math.cos((j/n-i/3)*2*math.pi)+1)/2) for i in range(3)] for j in range(n)]
     squares=[[[[s*rad,0]]+[[size[di]/2,random.random()/2**8] for di in range(dims-1)],[rad]*2,1, squareColours[t[0]]] for s,t in enumerate(states)]
-    FPS=60
     drag=0.1
     gravitationalConstant=-(size[0]/10)/(len(squares)/64)**2
     hookeStrength=1/size[0]
@@ -266,16 +368,6 @@ else:
                 for di in range(dims):
                     k[0][di][1]+=differences[di]*(hookeStrength*(i+1+j in stateTransitions[i])+gravity*l[2])
                     l[0][di][1]-=differences[di]*(hookeStrength*(i in stateTransitions[i+1+j])+gravity*k[2])
-    def drawShape(size,pos,colour,shape):
-        if shape==0:
-            surf = pygame.Surface(size)
-            surf.fill(colour)
-            rect = surf.get_rect()
-            screen.blit(surf, pos)
-        else:
-            pygame.draw.circle(screen, colour, pos, size[0])
-    def drawLine(initial,destination,colour):
-        pygame.draw.line(screen,colour,initial,destination)
 
     def quaternionMultiply(a,b):
         return [a[0]*b[0]-a[1]*b[1]-a[2]*b[2]-a[3]*b[3],
@@ -307,9 +399,8 @@ else:
 
     gain=1
     angularVelocityConversionFactor=math.tau/FPS
-    mouse=pygame.mouse
-    run=True
     while run:
+        clickDone=False
         for event in pygame.event.get():
             run=event.type != pygame.QUIT
             clickDone=event.type == pygame.MOUSEBUTTONUP

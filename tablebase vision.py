@@ -1,29 +1,27 @@
 import math, random
 from sympy.utilities.iterables import combinations, multiset_permutations #generates permutations where elements are identical, from https://stackoverflow.com/a/60252630
-from itertools import repeat
 def sgn(n):
     return 1 if n>0 else -1 if n<0 else 0
 
 boardWidth=8
+halfWidth=(boardWidth-1)//2
 boardSquares=boardWidth**2
-pieceNames=["empty","king","queen","rook","bishop","knight","pawn"]
-iterativePieces=[           2,      3,     4]
-pieceSymbols=[[" ","k","q","r","b","n","p"],[" ","K","Q","R","B","N","P"]]
+pieceNames=["empty","king","queen","rook","bishop","knight","pawn","nightrider"]
+iterativePieces=[           2,      3,     4,                       7]
+elementaryIterativePieces=[         3,     4,                       7] #may be optimisable further for nightriders because kings can't move to squares that are only in check after being moved to with them
+pieceSymbols=[[" ","k","q","r","b","n","p","m"],[" ","K","Q","R","B","N","P","M"]] #nightriders are M because Wikipedia said to make them N and substitute knights for S (which is shallow and pedantic)
 axisLetters=[["a","b","c","d","e","f","g","h"],["1","2","3","4","5","6","7","8"]]
+
 def parseMaterial(materialString): #I think in the endgame material notation, the piece letters are all capitalised but the v isn't
-    return [(pieceSymbols[1].index(j),c) for c,i in enumerate(materialString.split("v")) for j in i[1:]]
+    return [(pieceSymbols[1].index(j),c) for c,i in enumerate(materialString.split("v")) for j in (i[1:] if i[0]=="K" else i)]
 def generateCombinations(material):
     return set(c for m in range(len(material)+1) for c in combinations(material,m))
-combinations=generateCombinations(parseMaterial("KRvK"))
+combinations=generateCombinations(parseMaterial("KMNvK"))
 print("combinations:",combinations)
-
 def generatePermutations(material,squares):
     return multiset_permutations(material+((0,0),)*squares)
 
-def appendMove(relativeMovement):
-    return position+relativeMovement[0]+boardWidth*relativeMovement[1]
-
-increments=(tuple((p,p==1,p*boardWidth**di) for p in range(-1,3,2) for di in range(2)),tuple(((x,y),(x==1,y==1),x+y*boardWidth) for x in range(-1,3,2) for y in range(-1,3,2)))
+increments=(tuple((p,p==1,p*boardWidth**di) for p in range(-1,3,2) for di in range(2)),tuple(((x,y),(x==1,y==1),x+y*boardWidth) for x in range(-1,3,2) for y in range(-1,3,2)),tuple(((x,y),(x>0,y>0),x+y*boardWidth) for s in range(2) for x in range(-1*(2-s),3*(2-s),2*(2-s)) for y in range(-1*(1+s),3*(1+s),2*(1+s))))
 def findPieceMoves(boardState,position,piece): #outputs list of squares to which piece can travel
     if piece[0]==0:
         return []
@@ -34,26 +32,23 @@ def findPieceMoves(boardState,position,piece): #outputs list of squares to which
         moves=(spatial[0]!=0)*[position-1]+(spatial[0]!=boardWidth-1)*[position+1]
         horizontalMoves=moves+[position] #allow orthogonal vertical moves
         moves+=(position>=boardWidth)*[i-boardWidth for i in horizontalMoves]+(position<boardSquares-boardWidth)*[i+boardWidth for i in horizontalMoves]
-    if piece[0]==3 or piece[0]==4:
-        def inBoard():
-            return (armSpatial<boardWidth if b else armSpatial>=0) if piece[0]==3 else all((a<boardWidth if bi else a>=0) for a,bi in zip(armSpatial,b))
+    if piece[0] in elementaryIterativePieces:
         moves=[]
-        for i,(p,b,n) in enumerate(increments[piece[0]-3]):
+        for i,(p,b,n) in enumerate(increments[elementaryIterativePieces.index(piece[0])]): #indice, (polarity, boolean polarity,increment)
             arm=position
-            armSpatial=(spatial[i%2] if piece[0]==3 else spatial)
-            i=0
-            while inBoard() and (i==0 or boardState[arm][0]==0):
-                if i>0:
-                    moves.append(arm)
-                if piece[0]==3:
+            #armSpatial=(spatial[i%2] if piece[0]==3 else spatial)
+            for i in range((boardWidth-1-spatial[i%2] if b else spatial[i%2]) if piece[0]==3 else min((boardWidth-1-s if bi else s) for s,bi in zip(spatial,b)) if piece[0]==4 else min((boardWidth-1-s if pi>0 else s)//abs(pi) for s,pi in zip(spatial,p))):
+                '''if piece[0]==3:
                     armSpatial+=p
                 else:
-                    armSpatial=[sum(a) for a in zip(armSpatial,p)]
+                    armSpatial=map(sum,zip(armSpatial,p))'''
                 arm+=n
-                #print(arm,[(a,bi,(a<boardWidth if bi else a>=0)) for a,bi in zip(armSpatial,b)])
-                i+=1
-            if inBoard() and boardState[arm][1]!=piece[1]: #cannot check boardState[arm][0]!=0 as first part because if false, it can be out of range
-                moves.append(arm)
+                if boardState[arm][0]!=0:
+                    if boardState[arm][1]!=piece[1]:
+                        moves.append(arm)
+                    break
+                else:
+                    moves.append(arm)
     if piece[0]==5:
         if knightMovesPrecomputed:
             return precomputedKnightMoves[position]
@@ -66,90 +61,119 @@ precomputedKnightMoves=tuple(precomputeKnightMoves())
 knightMovesPrecomputed=1
 #print("precomputed knight moves:",precomputedKnightMoves)
 
-symmetryMode=(input("Would you like reduction by eightfold symmetry?")=="y")
+def firstDisparity(both): #from https://stackoverflow.com/a/15830697
+    return next(((a[0]-b[0])*2+(a[1]-b[1]) for i, (a, b) in enumerate(both) if a!=b),0)
+def axialDisparity(state,axis,suspicious=0): #very suspicious
+    return firstDisparity(((state[x*boardWidth**i+y*boardWidth**(1-i)] for i in range(2)) for x in range(boardWidth) for y in range(x)) if axis==2 else ((state[x*(1-2*i)*boardWidth**axis+(boardWidth-1-y if suspicious else y)*boardWidth**(1-axis)+(boardWidth-1)*i] for i in range(2)) for x in range(halfWidth) for y in range(boardWidth)))<0
+
+symmetryReduction=(input("Would you like reduction by eightfold symmetry? ")=="y")
 states=[] #list of all legal states (permutations of pieces) as lists of piece types and colours (0 if no piece)
 stateKingPositions=[]
 leftHalf=[x+y*boardWidth for y in range(boardWidth) for x in range(math.ceil(boardWidth/2))]
+diagonalHalf=[x+y*boardWidth for x in range(boardWidth) for y in range(x+1)]
+
 def generateKingPositions(pawns):
-    functionKingPositions=[]
-    whiteKingRange=(leftHalf if pawns else [x+y*boardWidth for x in range(math.ceil(boardWidth/2)) for y in range(x+1)]) if symmetryMode==1 else range(boardSquares)
+    whiteKingRange=(leftHalf if pawns else [x+y*boardWidth for x in range(math.ceil(boardWidth/2)) for y in range(x+1)]) if symmetryReduction else range(boardSquares)
     #print("permutation lengths (should be "+str(boardSquares)+"):",map(len,piecePermutations))
-    functionKingPositions=[(i,j) for i,iKingMoves in zip(whiteKingRange,[findPieceMoves(((0,0),)*boardSquares,i,(1,0)) for i in whiteKingRange]) for j in ((whiteKingRange if i==(boardSquares-1)/2 else (leftHalf if i%boardWidth==(boardWidth-1)/2 else ([x+y*boardWidth for x in range(boardWidth) for y in range(x+1)] if i%boardWidth==i//boardWidth and pawns==0 else range(boardSquares)))) if symmetryMode==1 else range(boardSquares)) if not (i==j or j in iKingMoves)]
-    kingStates=[tuple((int(k==i or k==j),int(k==j)) for k in range(boardSquares)) for i,j in functionKingPositions] #each square in each state list (in the list of them) is a list of the piece and its colour
-    return functionKingPositions,kingStates
+    kingPositions=[(i,j) for i,iKingMoves in zip(whiteKingRange,[findPieceMoves(((0,0),)*boardSquares,i,(1,0)) for i in whiteKingRange]) for j in ((whiteKingRange if i==(boardSquares-1)/2 else leftHalf if i%boardWidth==(boardWidth-1)/2 else diagonalHalf if i%boardWidth==i//boardWidth and pawns==0 else range(boardSquares)) if symmetryReduction else range(boardSquares)) if not (i==j or j in iKingMoves)]
+    kingStates=[tuple((int(k==i or k==j),int(k==j)) for k in range(boardSquares)) for i,j in kingPositions] #each square in each state list (in the list of them) is a list of the piece and its colour
+    kingLineOfSymmetry=[2 if i%boardWidth==i//boardWidth and j%boardWidth==j//boardWidth else (0 if i%boardWidth==j%boardWidth==halfWidth else 1 if i//boardWidth==j//boardWidth==halfWidth else -1) if boardWidth%2==1 else -1 for i,j in kingPositions] #-1 for no symmetry, 0 for x, 1 for y, 2 for diagonal
+    return kingPositions,kingStates,kingLineOfSymmetry
+
 anyPawns=any(p[0]==6 for c in combinations for p in c)
 allKingPositions=(generateKingPositions(0),)+(generateKingPositions(1),)*anyPawns
+combinationIndices=[]
+combinationTurnwises=[]
+def constructState(k,m):
+    return (l if l[0]==1 else next(m) for l in k)
+
 for c in combinations:
     piecePermutations=tuple(generatePermutations(c,boardSquares-2-len(c))) #leaving as generator expression causes many problems
     #print([i for i in piecePermutations]) #can't be directly printed due to being a generator object
     pawns=any(p[0]==6 for p in c) #pawns prevent eightfold symmetry (I hate them so much)
-    kingPositions=allKingPositions[pawns]
-    stateKingPositions+=[i for i in kingPositions[0] for _ in range(len(piecePermutations))]
-    states+=tuple(tuple(l if l[0]==1 else next(m) for l in k) for k in kingPositions[1] for m in map(iter,piecePermutations)) #each square in each state list (in the list of them) is a list of the piece and its colour
+    (kingPositions,kingStates,kingLineOfSymmetry)=allKingPositions[pawns]
+    combinationIndices.append(len(states))
+    playerPieces=[[],[]]
+    for i in c:
+        playerPieces[i[1]].append(i[0])
+    combinationTurnwises.append(sorted(playerPieces[0])==sorted(playerPieces[1])) #not very elegant
+    (newKingPositions,newStates)=zip(*[(p,i) for p,i,l in ((p,tuple(constructState(k,m)),l) for p,k,l in zip(kingPositions,kingStates,kingLineOfSymmetry) for m in map(iter,piecePermutations)) if not symmetryReduction or l==-1 or not axialDisparity(i,l)]) #not tuple(boardReflect(constructState(k,m)) if l!=-1 and axialDisparity(constructState(k,m),l) else tuple(constructState(k,m)) for k,l in zip(kingStates,kingLineOfSymmetry) for m in map(iter,piecePermutations)) because the reflected (reduced) one will appear anyway
+    stateKingPositions+=newKingPositions
+    states+=newStates
+
+def isSymmetry(state,kingPositions): #only for those with kings eightfolded already
+    if all(i%boardWidth==halfWidth for i in kingPositions) and boardWidth%2==0:
+        return axialDisparity(state,0)
+    if all(i%boardWidth==i//boardWidth for i in kingPositions):
+        return axialDisparity(state,2)
+    return False
+
+combinationIndices.append(len(states))
 stateSquareAttacks=[[[(k,l) in attackedSquares for l in range(2)] for k in range(boardSquares)] for q,attackedSquares in zip(states,[set([(m,q[1]) for i,q in enumerate(s) for m in findPieceMoves(s,i,q)]) for s in states])] #like states list but without turn to move and with (attacked by white,attacked by black) for each square
 #will have to have exception condition if pawns added (due to not all destination squares being attacked)
 stateChecks=[[r[q[l]][1-l] for l in range(2)] for q,r in zip(stateKingPositions,stateSquareAttacks)]
 
 def reflect(axis,position):
     return boardWidth-1-position+position//boardWidth*boardWidth*2 if axis==0 else position%boardWidth+(boardWidth-1-position//boardWidth)*boardWidth if axis==1 else position//boardWidth+(position%boardWidth)*boardWidth if axis==2 else position
-
-def symmetry(position,reflectionReport=0,reflectionsToApply=[False]*3):
-    if symmetryMode==0:
-        return position
-    def firstDisparity(both): #from https://stackoverflow.com/a/15830697
-        return next(((a[0]-b[0])*2+(a[1]-b[1]) for i, (a, b) in enumerate(both) if a!=b), 0)
-    def boardReflect(board,axis):
-        return tuple(board[reflect(axis,i)] for i in range(len(board)))
-    if reflectionReport==3:
+def boardReflect(board,axis):
+    return tuple(board[reflect(axis,i)] for i in range(boardSquares))
+def symmetry(state,reflectionMode=0,reflectionsToApply=[False]*3): #reflection modes: 0 reduces by eightfold, 1 reduces and reports reflections, 2 only reports, 3 applies list of reflections
+    if not symmetryReduction:
+        return state
+    if reflectionMode==3:
         for i,d in enumerate(reflectionsToApply):
             if d:
-                position=boardReflect(position,i)
-        return position
-    kingPositions=[(i%boardWidth,i//boardWidth) for i in [position.index((1,i)) for i in range(2)]] #doesn't use stateKingPositions because it doesn't include positions without symmetry applied
-    halfWidth=(boardWidth-1)//2
-    pawns=(6,0) in position or (6,1) in position
-    if reflectionReport>0:
+                state=boardReflect(state,i)
+        return state
+    kingPositions=[divmod(state.index((1,i)),boardWidth)[::-1] for i in range(2)] #this intakes positions without symmetry applied so doesn't use stateKingPositions 
+    pawns=any(s[0]==6 for s in state)
+    if reflectionMode>0:
         reflections=[0]*3
-    for d,w,b in zip(range(1+(not pawns)),kingPositions[0],kingPositions[1]): #iterating through dimensions (pretty cool)
-        if w>halfWidth or (boardWidth%2==1 and w==halfWidth and (b>halfWidth or (b==halfWidth and firstDisparity([[position[x*(1-2*i)-i+(y+i)*boardWidth if d==0 else y+boardWidth*(x*(1-2*i)+i*(boardWidth-1))] for i in range(2)] for x in range(halfWidth) for y in range(boardWidth)])<0))):
-            if reflectionReport<2:
-                position=boardReflect(position,d)
+    for d,w,b in zip(range(1+(not pawns)),*kingPositions): #iterating through dimensions (pretty cool)
+        if w>halfWidth or (boardWidth%2==1 and w==halfWidth and (b>halfWidth or (b==halfWidth and axialDisparity(state,d,(d==0 and (kingPositions[0][1]>halfWidth or (kingPositions[0][1]==halfWidth and kingPositions[1][1]>halfWidth))))))): #the black king can't be on the halfWidth also because it's only one square
+            if reflectionMode<2:
+                state=boardReflect(state,d)
             kingPositions=[(boardWidth-1-i[0],i[1]) if d==0 else (i[0],boardWidth-1-i[1]) for i in kingPositions]
-            if reflectionReport>0:
+            if reflectionMode>0:
                 reflections[d]=1
     if pawns:
-        return position
-    if kingPositions[0][0]<kingPositions[0][1] or (kingPositions[0][0]==kingPositions[0][1] and (kingPositions[1][0]<kingPositions[1][1] or (kingPositions[1][0]==kingPositions[1][1] and firstDisparity([[position[x*(boardWidth if i else 1)+y*(1 if i else boardWidth)] for i in range(2)] for x in range(boardWidth) for y in range(x)])<0))): #flip white king to bottom-right diagonal half of bottom-left quarter
-        if reflectionReport<2:
-            position=boardReflect(position,2)
-        if reflectionReport>0:
+        return state
+    if kingPositions[0][0]<kingPositions[0][1] or (kingPositions[0][0]==kingPositions[0][1] and (kingPositions[1][0]<kingPositions[1][1] or (kingPositions[1][0]==kingPositions[1][1] and axialDisparity(state,2)))): #flip white king to bottom-right diagonal half of bottom-left quarter
+        if reflectionMode<2:
+            state=boardReflect(state,2)
+        if reflectionMode>0:
             reflections[2]=1
-    return reflections if reflectionReport==2 else [position,reflections] if reflectionReport==1 else position
+    return reflections if reflectionMode==2 else [state,reflections] if reflectionMode==1 else state
 def positionSymmetry(position,reflectionsToApply,*reverse):
-    if symmetryMode==1:
+    if symmetryReduction:
         for i,r in enumerate(reversed(reflectionsToApply) if reverse else reflectionsToApply):
             if r:
                 position=reflect((2-i if reverse else i),position)
     return position
 
+
 #print(len(states),"states without turns:",states)
-stateTurns=(False,)*len(states)+(True,)*len(states)
-statesToAppend=tuple(symmetry(tuple((0,0) if j==(0,0) else (j[0],1-j[1]) for j in i),1) for i in states) #each state is formatted [colour to move,[[[square piece],[square colour]],[[square piece],[square colour]], ...]]
-states+=tuple(i[0] for i in statesToAppend)
+stateTurns=(False,)*len(states) #is less meaningful when turnwise reduction makes turn not always alternate (should be managed by program using tablebase (if not doing regular tablebase things))
+def changeTurn(s):
+    return tuple((0,0) if q[0]==0 else (q[0],1-q[1]) for q in s)
+(newStates,newReflections,newSquareAttacks,newChecks)=zip(*[(*symmetry(changeTurn(s),1),a,c) for t,i,j in zip(combinationTurnwises,combinationIndices[:-1],combinationIndices[1:]) if not symmetryReduction or not t for m,(s,a,c) in enumerate(zip(states[i:j],stateSquareAttacks[i:j],stateChecks[i:j]))])
+states+=newStates
+stateTurns+=(True,)*len(newStates)
 #print(len(states),"states:",states)
-stateSquareAttacks+=[symmetry([s[::-1] for s in a],3,r[1]) for a,r in zip(stateSquareAttacks,statesToAppend)] #state formatted [[attacked by white?,attacked by black?] for square in range(boardSquares)] #get a load of the comments' opening square brackets' kerning
+stateSquareAttacks+=[symmetry([s[::-1] for s in a],3,r) for a,r in zip(newSquareAttacks,newReflections)] #state formatted [[attacked by white?,attacked by black?] for square in range(boardSquares)] #do not change to "map(reversed,a)" (it will say "TypeError: 'map' object is not subscriptable")
 #print(len(stateSquareAttacks),"state square attacks:",stateSquareAttacks)
-stateChecks+=[i[::-1] for i in stateChecks]
+stateChecks+=[i[::-1] for i in newChecks] #list(map(reversed,newChecks)) causes "TypeError: 'list_reverseiterator' object is not subscriptable" (I hate it so much)
 
 #print("transitions between",len(states),"states:",stateTransitions)
 stateIllegalities=[2 if c[1] else (s!=symmetry(s)) for c,s in zip(stateChecks,states)] #0 is good, 1 is incorrect symmetry, 2 is illegal
+#print(len(filter(None,stateIllegalities)),"illegal states")
 #print("state illegalities",stateIllegalities)
 k=iter(range(len(states)))
 stateNewIDs=[states.index(symmetry(s)) if i==1 else (None if i==2 else next(k)) for s,i in zip(states,stateIllegalities)]
 def pruneIllegalities(stateList):
     return [j for i,j in zip(stateIllegalities,stateList) if i==0]
 print(len(states),"states pruned to",len([i for i in stateNewIDs if i!=None]))
-stateChecks=[j[0] for i,s,j in zip(stateIllegalities,states,stateChecks) if i==0]
+stateChecks=[j[0] for i,j in zip(stateIllegalities,stateChecks) if i==0]
 states=pruneIllegalities(states)
 stateTurns=pruneIllegalities(stateTurns)
 stateSquareAttacks=pruneIllegalities(stateSquareAttacks)
@@ -158,10 +182,10 @@ stateDict=dict(zip((states if turnwise else zip(stateTurns,states)),range(len(st
 print("state dict done")
 #print(min((print(i,j,q,s),len(s)) for i,(s,a) in enumerate(zip(states,stateSquareAttacks)) for j,q in enumerate(a)))
 def applyMoveToBoard(state,piece,move):
-    return tuple(((i[0],1-i[1]) if i[0]!=0 else i) for i in tuple((0,0) if k==piece else (state[piece] if k==move else r) for k,r in enumerate(state)))
+    return tuple((0,0) if k==piece else ((state[piece][0],1-state[piece][1]) if k==move else (r[0],1-r[1]) if r[0]!=0 else (0,0)) for k,r in enumerate(state)) #must be (0,0) in particular because (0,1) will be for en passant mask
 def dictInput(s,i,m):
     return symmetry(applyMoveToBoard(s,i,m)) if turnwise else (1-t,symmetry(applyMoveToBoard(s,i,m)))
-stateMoves=[[[m for m in findPieceMoves(s,i,q) if (s[m][0]==0 or q[1]!=s[m][1]) and ((dictInput(s,i,m) in stateDict) if any((i[0] in iterativePieces) for i in s if i!=m) else (q[0]!=1 or a[m][1]==0))] if q[1]==0 else [] for i,q in enumerate(s)] for s,a,t in zip(states,stateSquareAttacks,stateTurns)] #is list of lists of lists of destination squares for each piece #king can't move to a currently-attacked square (will have to be changed if hopping pieces or something are added, where squares' attackednesses change depending on occupancy)
+stateMoves=[[[m for m in findPieceMoves(s,i,q) if (s[m][0]==0 or q[1]!=s[m][1]) and ((dictInput(s,i,m) in stateDict) if any((i[0] in iterativePieces) for i in s if i!=m) else (q[0]!=1 or a[m][1]==0))] if q[1]==0 else [] for i,q in enumerate(s)] for s,a,t in zip(states,stateSquareAttacks,stateTurns)] #is list of state lists of destination lists for each piece #king can't move to a currently-attacked square (will have to be changed if hopping pieces or something are added, where squares' attackednesses change depending on occupancy)
 print("state moves done")
 stateTransitions=[[stateDict[dictInput(s,i,m)] for i,q in enumerate(o) for m in q] for s,a,o,t in zip(states,stateSquareAttacks,stateMoves,stateTurns)] #replace stateDict with (print(s),print(tuple(tuple(int(j) for j in i) for i in a)),stateDict[dictInput(s,i,m)]) for diagnostics
 print("state transitions done")
@@ -233,7 +257,7 @@ def printBoard(board):
     stateToPrint=""
     for i,s in enumerate(board):
         letter=pieceSymbols[s[1]][s[0]]
-        stateToPrint+=(underline(letter) if (i%boardWidth+i//boardWidth)%2==1 else letter) #light square
+        stateToPrint+=(underline(letter) if (i%boardWidth+i//boardWidth)%2==1 else letter) #light square underlining #this way is faster than sum(divmod())
         if (i+1)%boardWidth==0:
             output+="\033[F"+stateToPrint
             stateToPrint=""
@@ -380,6 +404,13 @@ if input("Would you like to play chess with God (y) or see the state transition 
                         parsedMove=[positionSymmetry(i,boardFlipping,1) for i in parseMove(move,(turn,perceivedBoard),thisStateMoves)]
                         print(parsedMove)
                     currentIndex=stateTransitions[currentIndex][thisStateMoves.index(parsedMove)]
+                    reflections=symmetry(applyMoveToBoard(currentState,parsedMove[0],parsedMove[1]),1)[1]
+                    '''if boardFlipping[2]^reflections[2]==1: #inelegant but necessary
+                        boardFlipping=[i^j for i,j in zip(boardFlipping[:2],reflections[1::-1])]+[1]
+                    else:
+                        boardFlipping=[i^j for i,j in zip(boardFlipping[:2],reflections[:2])]+[0]'''
+                    boardFlipping=[i^j for i,j in zip(boardFlipping,reflections)]
+                    print(boardFlipping)
                 else:
                     tablebaseMoves=[i for i,j in enumerate(stateTransitions[currentIndex]) if isOptimal(j)]
                     #print(stateWinningnesses[currentIndex])
@@ -387,13 +418,6 @@ if input("Would you like to play chess with God (y) or see the state transition 
                     godMove=tablebaseMoves[random.randrange(len(tablebaseMoves))]
                     parsedMove=stateMoves[currentIndex][godMove]
                     currentIndex=stateTransitions[currentIndex][godMove]
-                reflections=symmetry(applyMoveToBoard(currentState,parsedMove[0],parsedMove[1]),1)[1]
-                '''if boardFlipping[2]^reflections[2]==1: #inelegant but necessary
-                    boardFlipping=[i^j for i,j in zip(boardFlipping[:2],reflections[1::-1])]+[1]
-                else:
-                    boardFlipping=[i^j for i,j in zip(boardFlipping[:2],reflections[:2])]+[0]'''
-                boardFlipping=[i^j for i,j in zip(boardFlipping,reflections)]
-                print(boardFlipping)
     
     else: exit()
 else:
@@ -406,7 +430,7 @@ else:
     boardLastPrinted=0
     rad=size[0]/len(states)
     #bitColours=[[int(255*(math.cos((j/n-i/3)*2*math.pi)+1)/2) for i in range(3)] for j in range(n)]
-    nodes=[[[[s*rad,0]]+[[di/2,random.random()/2**8] for di in size],(rad,)*2, 1, (colours[t],colours[sgn(w[0])+5])] for s,(w,t) in enumerate(zip(stateWinningnesses,stateTurns))]
+    nodes=[[[[s*rad]+[di/2 for di in size[:3]],[0]+[random.random()/2**8 for di in range(dims-1)]],(rad,)*2, 1, (colours[t],colours[sgn(w[0])+5])] for s,(w,t) in enumerate(zip(stateWinningnesses,stateTurns))]
     #each formatted [position,size,mass,colours]
     drag=0.1
     gravitationalConstant=-(size[0]/10)*(64/len(nodes))**2
@@ -414,18 +438,18 @@ else:
     def physics():
         for i in nodes:
             if drag>0:
-                absVel=max(1,math.sqrt(sum(di[1]**2 for di in i[0]))) #each dimension's deceleration from drag is its magnitude as a component of the unit vector of velocity times absolute velocity squared, is actual component times absolute velocity.
-                for di in i[0]:
-                    di[1]*=1-absVel*drag #air resistance
-            for di in i[0]:
-                di[0]+=di[1]
+                absVel=max(1,math.sqrt(sum(di**2 for di in i[0][1]))) #each dimension's deceleration from drag is its magnitude as a component of the unit vector of velocity times absolute velocity squared, is actual component times absolute velocity.
+                i[0][1]=[di*(1-absVel*drag) for di in i[0][1]] #air resistance
+            i[0][0]=list(map(sum,zip(i[0][0],i[0][1])))
         for i,(it,k) in enumerate(zip(stateTransitions[:-1],nodes[:-1])): #TypeError: 'zip' object is not subscriptable (I hate it so much)
             for j,(jt,l) in enumerate(zip(stateTransitions[i+1:],nodes[i+1:])):
-                differences=[li[0]-ki[0] for li,ki in zip(l[0],k[0])]
+                differences=[li-ki for li,ki in zip(l[0][0],k[0][0])]
                 gravity=gravitationalConstant/max(1,sum(di**2 for di in differences)**1.5) #inverse-square law is 1/distance**2, for x axis is cos(angle of distance from axis)/(absolute distance)**2, the cos is x/(absolute), so is x/(abs)**3, however the sum outputs distance**2 so is exponentiated by 1.5 instead of 3
-                for ki,li,di in zip(k[0],l[0],differences):
-                    ki[1]+=di*(hookeStrength*(i+1+j in it)+gravity*l[2])
-                    li[1]-=di*(hookeStrength*(i in jt)+gravity*k[2])
+                gravity=(gravity*l[2],gravity*k[2])
+                for ni,(ki,li,di) in enumerate(zip(k[0][1],l[0][1],differences)): #we are the knights who say ni
+                    #print(ni,di)
+                    nodes[i][0][1][ni]+=di*(hookeStrength*(i+1+j in it)+gravity[0])
+                    nodes[i+1+j][0][1][ni]-=di*(hookeStrength*(i in jt)+gravity[1])
 
     def quaternionMultiply(a,b):
         return [a[0]*b[0]-a[1]*b[1]-a[2]*b[2]-a[3]*b[3],
@@ -450,7 +474,7 @@ else:
             return quaternionMultiply([math.cos(magpi)]+[i*simagomag for i in screenRotation], angle)
 
     def findSquareScreenPositions():
-        output=[[si[0]-di for si,di in zip(s[0],cameraPosition)] for s in nodes]
+        output=[[si-di for si,di in zip(s[0][0],cameraPosition)] for s in nodes]
         if dims==3:
             output=[[i+si/2 for si,i in zip(size,rotateVector([di-si/2 for di,si in zip(s,size)],cameraAngle[0])[1:])] for s in output]
         return output
@@ -462,7 +486,7 @@ else:
     run=True
     while run:
         doEvents()
-        cameraPosition=[sum(i[0][di][0] for i in nodes)/len(nodes)-size[di]/2 for di in range(dims)]
+        cameraPosition=[sum(i[0][0][di] for i in nodes)/len(nodes)-si/2 for di,si in enumerate(size)]
         keys=pygame.key.get_pressed()
         space=keys[pygame.K_SPACE]
         if space==0!=oldSpace:
@@ -492,7 +516,7 @@ else:
         if clickDone:
             mousePos=mouse.get_pos()
         for i,j,n in [(i,nodeScreenPositions[i],nodes[i]) for i in renderOrder]:
-            drawShape(n[1],j,n[3][colourMode],1)
+            drawShape(n[1],j,n[3][colourMode],5)
             if clickDone and i!=boardLastPrinted and sum((ji-mi)**2 for ji,mi in zip(j,mousePos))<n[1][0]**2:
                 print(printBoard(states[i]))
                 boardLastPrinted=i

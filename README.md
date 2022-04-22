@@ -58,27 +58,29 @@ In the modes with connections on rectangular boards (including the default chess
 ## Credits
 [@failedxyz](https://scratch.mit.edu/users/failedxyz) on Scratch for the only [implementation of the Sieve of Atkin](https://scratch.mit.edu/projects/17456670/) I found there, used to generate moves for the huygens (speed isn't very necessary because primes are computed prior).
 
-[User:Cburnett](https://en.wikipedia.org/wiki/User:Cburnett) on Wikipedia for the [SVG chess pieces](https://commons.wikimedia.org/wiki/Category:SVG_chess_pieces).
+[User:Cburnett](https://en.wikipedia.org/wiki/User:Cburnett) on Wikipedia for the [chess piece images](https://commons.wikimedia.org/wiki/Category:SVG_chess_pieces).
 
 [Simon](https://stackoverflow.com/users/827753/simon) on StackOverflow for the [O(1) function for minimum knight move count between relative coordinates on an infinite plane](https://stackoverflow.com/a/41704071), used as the heuristic in the A\* search algorithm in Ben Finegold mode.
 
 [@boraini](https://scratch.mit.edu/users/boraini) on Scratch for [the quaternion functions](https://turbowarp.org/454897467) used in this for 3D rotation (I originally used absolute yaw and pitch gimbals, but I had the problems with absolute yaw at high pitch corresponding with local roll, and unconstrained pitch inverting yaw controls, but with quaternions, mouse dragging now always corresponds with local yaw and pitch).
 
 # Tablebase Vision
-A Python program that is similar to the original/main purpose of CPV except generating tablebases (lists of all possible positions (permutations with turns) of a set of pieces with all possible moves they can make) and displaying them as a state transition diagram (like what Stephen Wolfram made for [elementary cellular automata](https://demonstrations.wolfram.com/CellularAutomatonStateTransitionDiagrams/)), currently only supporting kings.
+A Python program, similar to the original/main purpose of CPV, except for generating tablebases (lists of all possible permutations of a set of pieces instead of only one), displaying them as state transition diagrams (like what Stephen Wolfram made for [elementary cellular automata](https://demonstrations.wolfram.com/CellularAutomatonStateTransitionDiagrams/) but with connections representing one of multiple moves instead of the result of a deterministic rule) and playing chess with God (albeit generated inefficiently for that purpose, see [Syzygy](https://github.com/syzygy1/tb) for one capable of enumerating and regressing 7-piece endgames).
 ## TODO
-- Add move generation for iterative pieces (currently only kings and knights)
-- Add node colouring based on whether it's checkmate (or part of a forced sequence to which)
-- Add a mode with both playing and seeing the state transition diagram (showing your place in it)
-- Perhaps add GUI for playing (the CLI is good but selecting and dragging pieces and seeing winningness highlighted on each destination would be better)
-- Allow exporting of PGNs of sessions against the tablebase (or of checkmate sequences with maximum length)
+- Add Cburnett piece images
+- Add a mode for simultaneously playing and seeing the state transition diagram (showing your place in it overlaid over the current piece selected and moving those to which you transition over the corresponding squares to which you can move)
+- Allow exporting of PGNs of games against the tablebase (or of checkmate sequences with maximum length)
 - Add node mouse dragging (in planes parallel to the screen)
 - Add topological manifold boards (Klein bottle and real projective plane and such)
 - After topological manifold boards added, add option to account for their vertex-transitivity to reduce even further from eightfold symmetry
 - Allow exporting tablebases to folder containing program (so they can be reimported instead of regenerated each time)
+- Add support for 50-move rule (by regressing based on DTZ instead of DTM)
 
 Done:
 - Add 3D mode (for the embedding of the graph, not the board itself) with quaternion rotation
 - Detect and regress from checkmated states (and stalemated ones (at a lower priority that checkmate overwrites)) to determine optimal moves in all states
 - Add ability to play against tablebases (play chess with God)
-- Add eightfold symmetry mode (becomes only twofold when there are pawns)
+- Reduce by eightfold symmetry (only twofold when there are pawns)
+- Add move generation for iterative pieces (rooks, bishops and nightriders done)
+- Add node colouring based on whether it's checkmate (or part of a forced sequence to which)
+- Add playing GUI (the CLI is good but selecting and dragging pieces and seeing winningness highlighted on each destination is better)

@@ -1,5 +1,6 @@
 import math, random
 from sympy.utilities.iterables import combinations, multiset_permutations #generates permutations where elements are identical, from https://stackoverflow.com/a/60252630
+from itertools import pairwise
 def sgn(n):
     return 1 if n>0 else -1 if n<0 else 0
 
@@ -143,7 +144,7 @@ def symmetry(state,reflectionMode=0,reflectionsToApply=[False]*3): #reflection m
             state=boardReflect(state,2)
         if reflectionMode>0:
             reflections[2]=1
-    return reflections if reflectionMode==2 else [state,reflections] if reflectionMode==1 else state
+    return reflections if reflectionMode==2 else (state,reflections) if reflectionMode==1 else state
 def positionSymmetry(position,reflectionsToApply,*reverse):
     if symmetryReduction:
         for i,r in enumerate(reversed(reflectionsToApply) if reverse else reflectionsToApply):
@@ -156,11 +157,16 @@ def positionSymmetry(position,reflectionsToApply,*reverse):
 stateTurns=(False,)*len(states) #is less meaningful when turnwise reduction makes turn not always alternate (should be managed by program using tablebase (if not doing regular tablebase things))
 def changeTurn(s):
     return tuple((0,0) if q[0]==0 else (q[0],1-q[1]) for q in s)
-(newStates,newReflections,newSquareAttacks,newChecks)=zip(*[(*symmetry(changeTurn(s),1),a,c) for t,i,j in zip(combinationTurnwises,combinationIndices[:-1],combinationIndices[1:]) if not symmetryReduction or not t for m,(s,a,c) in enumerate(zip(states[i:j],stateSquareAttacks[i:j],stateChecks[i:j]))])
+new=zip(*[(symmetry(changeTurn(s),1),a,c) for t,(i,j) in zip(combinationTurnwises,pairwise(combinationIndices)) if not symmetryReduction or not t for s,a,c in zip(states[i:j],stateSquareAttacks[i:j],stateChecks[i:j])])
+if symmetryReduction:
+    (newNew,newSquareAttacks,newChecks)=new
+    (newStates,newReflections)=zip(*newNew)
+else:
+    (newStates,newSquareAttacks,newChecks)=new
 states+=newStates
 stateTurns+=(True,)*len(newStates)
 #print(len(states),"states:",states)
-stateSquareAttacks+=[symmetry([s[::-1] for s in a],3,r) for a,r in zip(newSquareAttacks,newReflections)] #state formatted [[attacked by white?,attacked by black?] for square in range(boardSquares)] #do not change to "map(reversed,a)" (it will say "TypeError: 'map' object is not subscriptable")
+stateSquareAttacks+=[symmetry([s[::-1] for s in a],3,r) for a,r in zip(newSquareAttacks,newReflections)] if symmetryReduction else [[s[::-1] for s in a] for a in newSquareAttacks] #state formatted [[attacked by white?,attacked by black?] for square in range(boardSquares)] #do not change to "map(reversed,a)" (it will say "TypeError: 'map' object is not subscriptable")
 #print(len(stateSquareAttacks),"state square attacks:",stateSquareAttacks)
 stateChecks+=[i[::-1] for i in newChecks] #list(map(reversed,newChecks)) causes "TypeError: 'list_reverseiterator' object is not subscriptable" (I hate it so much)
 
@@ -211,58 +217,36 @@ winningRegressionCandidates=[i for i,w in enumerate(stateWinningnesses) if w[1]!
 #print("state winningnesses:",stateWinningnesses)
 #printWinningnesses()
 cycles=0
-while cycles==0 or stateChanges!=0:
+while True:
     if cycles%2==0:
         stateChanges=0
         blitStateWinningnesses=stateWinningnesses
-        for i in winningRegressionCandidates:
-            for p in stateParents[i]:
-                if stateWinningnesses[p][1]==None or -stateWinningnesses[i][0]>stateWinningnesses[p][0]: #do not add "or (-stateWinningnesses[i][0]==stateWinningnesses[p][0] and stateWinningnesses[i][1]+1<stateWinningnesses[p][1])" because faster forced win sequences to one which is already winning can't be found (due to it being exhaustive) #stateWinningnesses[i][0] cannot be 1 if changed by previous iteration (it must be drawing or losing, making its identicality)
-                    blitStateWinningnesses[p]=(-stateWinningnesses[i][0],stateWinningnesses[i][1]+1)
+        for i,pa,(w,m) in ((i,stateParents[i],stateWinningnesses[i]) for i in winningRegressionCandidates):
+            for p,(pw,pm) in ((p,stateWinningnesses[p]) for p in pa):
+                if pm==None or -w>pw: #do not add "or (-stateWinningnesses[i][0]==stateWinningnesses[p][0] and stateWinningnesses[i][1]+1<stateWinningnesses[p][1])" because faster forced win sequences to one which is already winning can't be found (due to it being exhaustive) #stateWinningnesses[i][0] cannot be 1 if changed by previous iteration (it must be drawing or losing, making its identicality)
+                    blitStateWinningnesses[p]=(-w,m+1)
                     stateChanges+=1
     else:
-        blitStateWinningnesses=[]
-        winningRegressionCandidates=[]
-        for i,(t,w) in enumerate(zip(stateTransitions,stateWinningnesses)):
-            bestWinningness=-1
-            bestMoves=0
-            if t==[] or w[0]!=0: #check/stalemate, existing winning/losing positions (regressed exhaustively already), do not add " or w[1]!=None" for those previously only known to be stalemate (because positions that have a cooperating stalemate as a descendant can be regressed to by those newly found to be winning), respectively
-                blitStateWinningnesses.append(w)
-            else:
-                #print("indices",len(stateWinningnesses),t)
-                for k in t:
-                    candidateWinningness=-stateWinningnesses[k][0]
-                    candidateMoves=None if stateWinningnesses[k][1]==None else stateWinningnesses[k][1]+1
-                    if candidateWinningness>=bestWinningness and (candidateWinningness>bestWinningness or (candidateMoves>bestMoves if candidateWinningness==-1 else (candidateMoves!=None and (bestMoves==None or candidateMoves<bestMoves)))): #if neither side can win, it will attempt to stalemate as quickly as possible (but still prolongs mate if losing and does it as quickly as possible if winning)
-                        bestWinningness=candidateWinningness
-                        bestMoves=candidateMoves
-                blitStateWinningnesses.append((bestWinningness,bestMoves))
-                if -1==bestWinningness!=w:
-                    winningRegressionCandidates.append(i)
-        stateChanges=sum(int(b!=w) for b,w in zip(blitStateWinningnesses,stateWinningnesses))
-    #print(stateChanges,"states changed")
+        blitStateWinningnesses=[w if t==[] or w[0]!=0 else (-opponentWinningness,(max(candidates)+1 if opponentWinningness==1 else (None if (m:=min(candidates,default=None)==None) else m+1))) for t,w,(opponentWinningness,candidates) in zip(stateTransitions,stateWinningnesses,((opponentWinningness,(stateWinningnesses[k][1] for k in t if stateWinningnesses[k][0]==opponentWinningness and not stateWinningnesses[k][1]==None)) for t,opponentWinningness in ((t,min((stateWinningnesses[k][0] for k in t),default=0)) for t in stateTransitions)))]
+        winningRegressionCandidates=[i for i,(b,w) in enumerate(zip(blitStateWinningnesses,stateWinningnesses)) if b[0]==-1!=w[0]]
+        stateChanges=sum(b[0]!=w[0] for b,w in zip(blitStateWinningnesses,stateWinningnesses))
+        #print([b[0] for b,w in zip(blitStateWinningnesses,stateWinningnesses) if b[0]!=w[0]])
+    #print(stateChanges,"states changed on cycle",cycles)
     stateWinningnesses=blitStateWinningnesses
     #print("new state winningnesses:",stateWinningnesses)
     #printWinningnesses()
-    cycles+=1
+    if stateChanges==0:
+        break
+    else:
+        cycles+=1
 printWinningnesses()
 
 #print(stateTransitions)
 
 def printBoard(board):
-    def underline(input): #from https://stackoverflow.com/a/71034895
-        return '{:s}'.format('\u0332'.join(input+' '))[:-1]
-    output='''
-    '''*boardWidth
-    stateToPrint=""
-    for i,s in enumerate(board):
-        letter=pieceSymbols[s[1]][s[0]]
-        stateToPrint+=(underline(letter) if (i%boardWidth+i//boardWidth)%2==1 else letter) #light square underlining #this way is faster than sum(divmod())
-        if (i+1)%boardWidth==0:
-            output+="\033[F"+stateToPrint
-            stateToPrint=""
-    return output+"\033["+str(boardWidth-1)+"B"
-
+    return '''
+'''*boardWidth+"".join(["\033[F"+"".join([('{:s}'.format('\u0332'.join(letter+' '))[:-1] if (i+b)%2==1 else letter) for i,letter in [(i,pieceSymbols[s[1]][s[0]]) for i,s in enumerate(board[b*boardWidth:(b+1)*boardWidth])]]) for b in range(boardWidth)])+"\033["+str(boardWidth-1)+"B" #ANSI escape sequences
+                                           #from https://stackoverflow.com/a/71034895      #light squares underlined
 def initialisePygame(guiMode):
     global clock
     clock=pygame.time.Clock()
@@ -279,7 +263,7 @@ def initialisePygame(guiMode):
     if guiMode==1: #guiMode van Russom
         size=[i//boardWidth*boardWidth for i in size]
     global screen
-    screen = pygame.display.set_mode(size[:2])
+    screen = pygame.display.set_mode(size[:2],pygame.RESIZABLE)
     global drawShape
     def drawShape(size,pos,colour,shape):
         if shape==0:
@@ -299,8 +283,12 @@ def initialisePygame(guiMode):
         global run
         clickDone=False
         for event in pygame.event.get():
-            run=event.type != pygame.QUIT
-            clickDone=event.type == pygame.MOUSEBUTTONUP
+            if event.type==pygame.QUIT:
+                run=False
+            if event.type==pygame.MOUSEBUTTONUP:
+                clickDone=1
+            if event.type == pygame.WINDOWRESIZED:
+                size[:2]=screen.get_rect().size
         pygame.display.flip()
         clock.tick(FPS)
         screen.fill(black)

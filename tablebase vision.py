@@ -1,6 +1,7 @@
-import math, random
+import math, random, os
+imagePath=os.path.join(os.path.dirname(__file__),"Cburnett_pieces")
 from sympy.utilities.iterables import combinations, multiset_permutations #generates permutations where elements are identical, from https://stackoverflow.com/a/60252630
-from itertools import pairwise
+from itertools import pairwise,groupby
 def sgn(n):
     return 1 if n>0 else -1 if n<0 else 0
 
@@ -10,14 +11,14 @@ boardSquares=boardWidth**2
 pieceNames=["empty","king","queen","rook","bishop","knight","pawn","nightrider"]
 iterativePieces=[           2,      3,     4,                       7]
 elementaryIterativePieces=[         3,     4,                       7] #may be optimisable further for nightriders because kings can't move to squares that are only in check after being moved to with them
-pieceSymbols=[[" ","k","q","r","b","n","p","m"],[" ","K","Q","R","B","N","P","M"]] #nightriders are M because Wikipedia said to make them N and substitute knights for S (which is shallow and pedantic)
+pieceSymbols=[[" ","K","Q","R","B","N","P","M"],[" ","k","q","r","b","n","p","m"]] #nightriders are M because Wikipedia said to make them N and substitute knights for S (which is shallow and pedantic)
 axisLetters=[["a","b","c","d","e","f","g","h"],["1","2","3","4","5","6","7","8"]]
 
 def parseMaterial(materialString): #I think in the endgame material notation, the piece letters are all capitalised but the v isn't
-    return [(pieceSymbols[1].index(j),c) for c,i in enumerate(materialString.split("v")) for j in (i[1:] if i[0]=="K" else i)]
+    return [(pieceSymbols[0].index(j),c) for c,i in enumerate(materialString.split("v")) for j in (i[1:] if i[0]=="K" else i)]
 def generateCombinations(material):
     return set(c for m in range(len(material)+1) for c in combinations(material,m))
-combinations=generateCombinations(parseMaterial("KMNvK"))
+combinations=generateCombinations(parseMaterial("KRvK"))
 print("combinations:",combinations)
 def generatePermutations(material,squares):
     return multiset_permutations(material+((0,0),)*squares)
@@ -126,7 +127,7 @@ def symmetry(state,reflectionMode=0,reflectionsToApply=[False]*3): #reflection m
             if d:
                 state=boardReflect(state,i)
         return state
-    kingPositions=[divmod(state.index((1,i)),boardWidth)[::-1] for i in range(2)] #this intakes positions without symmetry applied so doesn't use stateKingPositions 
+    kingPositions=[divmod(state.index((1,i)),boardWidth)[::-1] for i in range(2)] #this intakes positions without symmetry applied so doesn't use stateKingPositions
     pawns=any(s[0]==6 for s in state)
     if reflectionMode>0:
         reflections=[0]*3
@@ -187,31 +188,31 @@ turnwise=True #turnwise symmetry reduction (disable if you are using state trans
 stateDict=dict(zip((states if turnwise else zip(stateTurns,states)),range(len(states))))
 print("state dict done")
 #print(min((print(i,j,q,s),len(s)) for i,(s,a) in enumerate(zip(states,stateSquareAttacks)) for j,q in enumerate(a)))
-def applyMoveToBoard(state,piece,move):
-    return tuple((0,0) if k==piece else ((state[piece][0],1-state[piece][1]) if k==move else (r[0],1-r[1]) if r[0]!=0 else (0,0)) for k,r in enumerate(state)) #must be (0,0) in particular because (0,1) will be for en passant mask
+def applyMoveToBoard(state,piece,move,invert=True):
+    return tuple((0,0) if k==piece else (((state[piece][0],1-state[piece][1]) if invert else state[piece]) if k==move else ((r[0],1-r[1]) if invert else r) if r[0]!=0 else (0,0)) for k,r in enumerate(state)) #must be (0,0) in particular because (0,1) will be for en passant mask
 def dictInput(s,i,m):
     return symmetry(applyMoveToBoard(s,i,m)) if turnwise else (1-t,symmetry(applyMoveToBoard(s,i,m)))
-stateMoves=[[[m for m in findPieceMoves(s,i,q) if (s[m][0]==0 or q[1]!=s[m][1]) and ((dictInput(s,i,m) in stateDict) if any((i[0] in iterativePieces) for i in s if i!=m) else (q[0]!=1 or a[m][1]==0))] if q[1]==0 else [] for i,q in enumerate(s)] for s,a,t in zip(states,stateSquareAttacks,stateTurns)] #is list of state lists of destination lists for each piece #king can't move to a currently-attacked square (will have to be changed if hopping pieces or something are added, where squares' attackednesses change depending on occupancy)
-print("state moves done")
-stateTransitions=[[stateDict[dictInput(s,i,m)] for i,q in enumerate(o) for m in q] for s,a,o,t in zip(states,stateSquareAttacks,stateMoves,stateTurns)] #replace stateDict with (print(s),print(tuple(tuple(int(j) for j in i) for i in a)),stateDict[dictInput(s,i,m)]) for diagnostics
-print("state transitions done")
+(stateMoves,stateTransitions)=[[() if s==(None,) else s for s in l] for l in zip(*[list(zip(*([(None,)*2] if s==[[]]*boardSquares else [((i,m[0]),m[1]) for i,q in enumerate(s) for m in q]))) for s in ([[(m,stateDict[d]) for m,d in ((m,dictInput(s,i,m)) for m in findPieceMoves(s,i,q) if s[m][0]==0 or q[1]!=s[m][1]) if (d in stateDict if any((j[0] in iterativePieces) for k,j in enumerate(s) if k!=m) else (q[0]!=1 or a[m][1]==0))] if q[1]==0 else [] for i,q in enumerate(s)] for s,a,t in zip(states,stateSquareAttacks,stateTurns))])] #is list of state lists of destination lists for each piece #king can't move to a currently-attacked square (will have to be changed if hopping pieces or something are added, where squares' attackednesses change depending on occupancy)
+#replace stateDict with (print(s),print(tuple(tuple(int(j) for j in i) for i in a)),stateDict[d]) for diagnostics
+print("state moves and transitions done")
 stateParents=tuple([[] for i in range(len(states))]) #[[]]*len(states) makes them all point to the same one, it seems
 for i,s in enumerate(stateTransitions):
     for t in s:
-        stateParents[t].append(i)
+        if t!=None:
+            stateParents[t].append(i)
 print("state parents done")
 #stateMoves=[[[m[1] for m in s if m[0]==i] for i in range(boardSquares)] for s in [[m[k] for k,l in enumerate(j)] for j,m in zip(stateTransitions,[[[i,k] for i,j in enumerate(s) for k in j] for s in stateMoves])]] #would use this one except stateMoves is only currently used to convert a list of an origin and destination to a state ID (for which being parallel with stateTransitions is more efficient)
-stateMoves=[[m[k] for k in range(len(j))] for j,m in zip(stateTransitions,[[[i,k] for i,j in enumerate(s) for k in j] for s in stateMoves])]
-print("state moves reformatted")
+#stateMoves=[m[:len(j)] for j,m in zip(stateTransitions,[[[i,k] for i,j in enumerate(s) for k in j] for s in stateMoves])]
+#print("state moves reformatted")
 
 def printWinningnesses(): #could be done inline in the regression loop also to be slightly more efficient (though its performance impact is negligible) and to make it tell you as it finds them instead of at the end (which could take hours for large tablebases)
     i=0
     while i==0 or matesInI!=[0]*3:
-        matesInI=[sum(1 for j in stateWinningnesses if j==(w,i)) for w in range(-1,2)]
+        matesInI=[sum(j==(w,i) for j in stateWinningnesses) for w in range(-1,2)]
         if matesInI!=[0]*3:
             print("there are",matesInI[1],"stalemates in "+str(i)+" and",matesInI[2*(i%2)],("wins" if i%2==1 else "losses"),"in",i) #in terms of ply
         i+=1
-stateWinningnesses=[(-c,0) if t==[] else (0,None) for t,c in zip(stateTransitions,stateChecks)] #0 if drawing, 1 if winning, -1 if losing (like engine evaluations but only polarity (and relative to side to move like Syzygy, not absolute like engines), not magnitude (due to infinite intelligence))
+stateWinningnesses=[(-c,0) if t==() else (0,None) for t,c in zip(stateTransitions,stateChecks)] #0 if drawing, 1 if winning, -1 if losing (like engine evaluations but only polarity (and relative to side to move like Syzygy, not absolute like engines), not magnitude (due to infinite intelligence))
 winningRegressionCandidates=[i for i,w in enumerate(stateWinningnesses) if w[1]!=None]
 #it assumes each position is drawing until it learns otherwise (because infinite loops with insufficient material to forcibly stalemate (and be marked as such by the regression) are draws)
 #print("state winningnesses:",stateWinningnesses)
@@ -227,7 +228,7 @@ while True:
                     blitStateWinningnesses[p]=(-w,m+1)
                     stateChanges+=1
     else:
-        blitStateWinningnesses=[w if t==[] or w[0]!=0 else (-opponentWinningness,(max(candidates)+1 if opponentWinningness==1 else (None if (m:=min(candidates,default=None)==None) else m+1))) for t,w,(opponentWinningness,candidates) in zip(stateTransitions,stateWinningnesses,((opponentWinningness,(stateWinningnesses[k][1] for k in t if stateWinningnesses[k][0]==opponentWinningness and not stateWinningnesses[k][1]==None)) for t,opponentWinningness in ((t,min((stateWinningnesses[k][0] for k in t),default=0)) for t in stateTransitions)))]
+        blitStateWinningnesses=[w if t==() or w[0]!=0 else (-opponentWinningness,(max(candidates)+1 if opponentWinningness==1 else (None if (m:=min(candidates,default=None)==None) else m+1))) for t,w,(opponentWinningness,candidates) in zip(stateTransitions,stateWinningnesses,((opponentWinningness,(stateWinningnesses[k][1] for k in t if stateWinningnesses[k][0]==opponentWinningness and not stateWinningnesses[k][1]==None)) for t,opponentWinningness in ((t,min((stateWinningnesses[k][0] for k in t),default=0)) for t in stateTransitions)))]
         winningRegressionCandidates=[i for i,(b,w) in enumerate(zip(blitStateWinningnesses,stateWinningnesses)) if b[0]==-1!=w[0]]
         stateChanges=sum(b[0]!=w[0] for b,w in zip(blitStateWinningnesses,stateWinningnesses))
         #print([b[0] for b,w in zip(blitStateWinningnesses,stateWinningnesses) if b[0]!=w[0]])
@@ -241,12 +242,12 @@ while True:
         cycles+=1
 printWinningnesses()
 
-#print(stateTransitions)
-
 def printBoard(board):
-    return '''
-'''*boardWidth+"".join(["\033[F"+"".join([('{:s}'.format('\u0332'.join(letter+' '))[:-1] if (i+b)%2==1 else letter) for i,letter in [(i,pieceSymbols[s[1]][s[0]]) for i,s in enumerate(board[b*boardWidth:(b+1)*boardWidth])]]) for b in range(boardWidth)])+"\033["+str(boardWidth-1)+"B" #ANSI escape sequences
+    print("".join(["".join([('{:s}'.format('\u0332'.join(letter+' '))[:-1] if (i+b)%2==1 else letter) for i,letter in [(i,pieceSymbols[s[1]][s[0]]) for i,s in enumerate(board[b*boardWidth:(b+1)*boardWidth])]])+"\n" for b in range(boardWidth-1,-1,-1)])+"\033["+str(boardWidth-1)+"B",end="") #ANSI escape sequences
                                            #from https://stackoverflow.com/a/71034895      #light squares underlined
+def FEN(board,turn=0):
+    return "/".join("".join((str(len(list(q))) if l==" " else "".join(q)) for l,q in groupby(pieceSymbols[s[1]][s[0]] for s in board[b*boardWidth:(b+1)*boardWidth])) for b in range(boardWidth-1,-1,-1))+" "+("b" if turn else "w")+" - - 0 1" #castling, en passant, moves from zeroing and moves from origin state (indice beginning at 1) not yet supported
+
 def initialisePygame(guiMode):
     global clock
     clock=pygame.time.Clock()
@@ -287,7 +288,7 @@ def initialisePygame(guiMode):
                 run=False
             if event.type==pygame.MOUSEBUTTONUP:
                 clickDone=1
-            if event.type == pygame.WINDOWRESIZED:
+            if event.type==pygame.WINDOWRESIZED:
                 size[:2]=screen.get_rect().size
         pygame.display.flip()
         clock.tick(FPS)
@@ -298,15 +299,18 @@ def initialisePygame(guiMode):
 if input("Would you like to play chess with God (y) or see the state transition diagram (n)? ")=="y":
     def whereIs(square):
         return sum(axisLetters[i].index(square[i])*boardWidth**i for i in range(2))
-    def parseMove(move,state,thisStateMoves): #supports descriptive and algebraic
-        if move[0] in axisLetters:
+    def parseMove(move,turnToMove,state,perceivedMoves): #supports descriptive and algebraic
+        if all(m in axisLetters[i] for i,m in enumerate(move[:2])):
             return [whereIs(move[2*i:2*i+2]) for i in range(2)]
         else:
-            if move[0] in pieceSymbols[1]:
-                pieceType=pieceSymbols[1].index(move[0])
+            if move[0] in pieceSymbols[0]:
+                pieceType=pieceSymbols[0].index(move[0])
                 move=move[1:]
             else:
                 pieceType=6 #pawn moves (ie. e4) don't begin with P in algebraic notation
+            mandateTaking=(move[0]=="x")
+            if mandateTaking:
+                move=move[1:]
             destination=whereIs(move[-2:])
             restrictedAxes=[None]*2
             if len(move)>2:
@@ -314,98 +318,99 @@ if input("Would you like to play chess with God (y) or see the state transition 
                     for i in range(2):
                         if restrictionCharacter in axisLetters[i]:
                             restrictedAxes[i]=axisLetters[i].index(restrictionCharacter)
-            #print(pieceSymbols[1].index(move[0]))
-            for i,p in enumerate(state[1]):
-                if p==(pieceType,state[0]) and [i,destination] in thisStateMoves and (restrictedAxes[0]==None or i%boardWidth==restrictedAxes[0]) and (restrictedAxes[1]==None or i//boardWidth==restrictedAxes[1]):
+            print(perceivedMoves,turnToMove,restrictedAxes)
+            print((pieceType,turnToMove))
+            for i,p in enumerate(state):
+                print(p,[i,destination],[i%boardWidth,i//boardWidth])
+                if p==(pieceType,turnToMove) and [i,destination] in perceivedMoves and (restrictedAxes[0]==None or i%boardWidth==restrictedAxes[0]) and (restrictedAxes[1]==None or i//boardWidth==restrictedAxes[1]):
                     #print(i,p[0],destination)
-                    return [i,destination]
+                    return (i,destination)
     def isOptimal(i):
+        print(stateWinningnesses[i],stateWinningnesses[currentIndex])
         #print(stateWinningnesses[i],(-stateWinningnesses[currentIndex][0],stateWinningnesses[currentIndex][1]-1))
         return stateWinningnesses[i][0]==0 if stateWinningnesses[currentIndex][1]==None else stateWinningnesses[i]==(-stateWinningnesses[currentIndex][0],stateWinningnesses[currentIndex][1]-1)
     guiMode=(input("Would you like a GUI? (y/n)")=="y")
     if guiMode:
-        def renderBoard(state,thisStateMoves):
+        def renderBoard(state,perceivedMoves):
             global clickedSquare
-            for i,s in enumerate(state):
+            for i,s,m in [(i,s,[selectedSquare,i]) for i,s in enumerate(state)]:
                 squarePosition=[i%boardWidth,(boardWidth-1-i//boardWidth)]
-                drawShape([squareSize]*2,[i*squareSize for i in squarePosition],(((0,255,0) if isOptimal(stateTransitions[currentIndex][thisStateMoves.index([selectedSquare,i])]) else (255,0,0)) if selectedness==1 and [selectedSquare,i] in thisStateMoves else colours[sum(squarePosition)%2]),0)
+                drawShape([squareSize]*2,[i*squareSize for i in squarePosition],(((0,255,0) if isOptimal(stateTransitions[currentIndex][perceivedMoves.index(m)]) else (255,0,0)) if selectedness and m in perceivedMoves else colours[sum(squarePosition)%2]),0)
                 if s!=(0,0):
-                    colour=(0,255,0) if (i==selectedSquare and selectedness==1) else colours[2+s[1]]
+                    colour=(0,255,0) if (i==selectedSquare and selectedness) else colours[2+s[1]]
                     if s[0]!=0:
                         drawShape([squareSize*3/4]*2,[(i+1/(8 if s[0]==3 else 2))*squareSize for i in squarePosition],colour,(0 if s[0]==3 else s[0]))
-                if clickDone and all(0<mousePos[di]/squareSize-squarePosition[di]<1 for di in range(2)):
-                    clickedSquare=positionSymmetry(i,boardFlipping,1)
+            if clickDone and all(0<=m<boardSize for m in mousePos[:2]):
+                clickedSquare=sum((boardWidth-1-m if di==1 else m)*boardWidth**di for di,m in enumerate(m//squareSize for m in mousePos[:2]))
+                #clickedSquare=positionSymmetry(clickedSquare,boardFlipping,1)
         import pygame
         from pygame.locals import *
         initialisePygame(1)
         selectedSquare=-1
         clickedSquare=-1
-        selectedness=0
-        squareSize=min(size)//boardWidth
+        selectedness=False
+        boardSize=min(size[:2])
+        squareSize=boardSize//boardWidth
     run=True
     while run:
         moves=1
         currentIndex=random.randrange(len(states)) #use stateWinningnesses.index((-1,20)) to be checkmated in 10 in KNNNvK
         boardFlipping=[0]*3
         humanColour=0 if turnwise else stateTurns[currentIndex] #it includes a u because this is a British program (property of her majesty)
-        turn=1
-        while moves>0 and run:
-            currentState=tuple((i,j) if i==0 else (i,j^turn) for i,j in states[currentIndex])
+        turn=True
+        while run:
+            turn=(not turn) if turnwise else stateTurns[currentIndex]
+            currentState=tuple((t,(0 if t==0 else c^turn)) for t,c in states[currentIndex])
             moves=len(stateMoves[currentIndex])
-            if turnwise:
-                turn^=1
-            else:
-                turn=stateTurns[currentIndex]
-            perceivedBoard=symmetry([(i[0],i[1]^turn) for i in currentState],3,boardFlipping)
-            print(printBoard(perceivedBoard))
+            perceivedState=symmetry(currentState,3,boardFlipping)
+            printBoard(perceivedState)
             if moves==0:
                 print(("Human" if turn==humanColour else "God"),"is",("checkmated" if stateChecks[currentIndex]==1 else "stalemated"))
-            else:
-                if turn==humanColour:
-                    thisStateMoves=stateMoves[currentIndex]
-                    apparentMoves=[[positionSymmetry(j,boardFlipping) for j in i] for i in thisStateMoves]
-                    print(thisStateMoves)
-                    print(apparentMoves,boardFlipping)
-                    if guiMode:
-                        moveDone=False
-                        while run and not moveDone:
-                            doEvents()
-                            if clickDone:
-                                mousePos=mouse.get_pos()
-                                #print([di/squareSize for di in mousePos])
-                            renderBoard(perceivedBoard,thisStateMoves)
-                            if clickedSquare!=-1:
-                                print(clickedSquare)
-                                if currentState[clickedSquare][0]==0 or currentState[clickedSquare][1]==humanColour:
-                                    if [selectedSquare,clickedSquare] in thisStateMoves:
-                                        moveDone=True
-                                        parsedMove=[selectedSquare,clickedSquare]
-                                        #humanColour^=1
-                                else:
-                                    selectedness=((not selectedness) or selectedSquare!=clickedSquare)
-                                    selectedSquare=clickedSquare
-                                    print("s",selectedSquare)
-                                clickedSquare=-1
-                    else:
-                        move=input("state "+str(currentIndex)+", "+("white" if turn==0 else "black")+" to move. ")
-                        print(move,(turn,perceivedBoard),thisStateMoves)
-                        parsedMove=[positionSymmetry(i,boardFlipping,1) for i in parseMove(move,(turn,perceivedBoard),thisStateMoves)]
-                        print(parsedMove)
-                    currentIndex=stateTransitions[currentIndex][thisStateMoves.index(parsedMove)]
-                    reflections=symmetry(applyMoveToBoard(currentState,parsedMove[0],parsedMove[1]),1)[1]
-                    '''if boardFlipping[2]^reflections[2]==1: #inelegant but necessary
-                        boardFlipping=[i^j for i,j in zip(boardFlipping[:2],reflections[1::-1])]+[1]
-                    else:
-                        boardFlipping=[i^j for i,j in zip(boardFlipping[:2],reflections[:2])]+[0]'''
-                    boardFlipping=[i^j for i,j in zip(boardFlipping,reflections)]
-                    print(boardFlipping)
+                break
+            elif turn==humanColour:
+                thisStateMoves=stateMoves[currentIndex]
+                apparentMoves=[[positionSymmetry(j,boardFlipping) for j in i] for i in thisStateMoves]
+                print(thisStateMoves)
+                print(apparentMoves,boardFlipping)
+                if guiMode:
+                    moveDone=False
+                    while run and not moveDone:
+                        doEvents()
+                        if clickDone:
+                            mousePos=mouse.get_pos()
+                            #print([di/squareSize for di in mousePos])
+                        renderBoard(perceivedState,apparentMoves)
+                        if clickedSquare!=-1:
+                            print(clickedSquare)
+                            if perceivedState[clickedSquare][0]!=0 and perceivedState[clickedSquare][1]==humanColour:
+                                selectedness=((not selectedness) or selectedSquare!=clickedSquare)
+                                selectedSquare=clickedSquare
+                                print("s",selectedSquare)
+                            elif [selectedSquare,clickedSquare] in apparentMoves:
+                                moveDone=True
+                                parsedMove=thisStateMoves[apparentMoves.index([selectedSquare,clickedSquare])] #very suspicious
+                                #humanColour^=1
+                            clickedSquare=-1
                 else:
-                    tablebaseMoves=[i for i,j in enumerate(stateTransitions[currentIndex]) if isOptimal(j)]
-                    #print(stateWinningnesses[currentIndex])
-                    print("state "+str(currentIndex)+", I play",("the" if len(tablebaseMoves)==1 else "one of "+str(len(tablebaseMoves))),"optimal",str(("losing","drawing","winning")[stateWinningnesses[currentIndex][0]+1]),"move"+"s"*(len(tablebaseMoves)!=1)+".")
-                    godMove=tablebaseMoves[random.randrange(len(tablebaseMoves))]
-                    parsedMove=stateMoves[currentIndex][godMove]
-                    currentIndex=stateTransitions[currentIndex][godMove]
+                    move=input("state "+str(currentIndex)+", "+("black" if turn else "white")+" to move. ")
+                    print(move,(turn,perceivedState),thisStateMoves)
+                    parsedMove=[positionSymmetry(i,boardFlipping,1) for i in parseMove(move,turn,perceivedState,apparentMoves)]
+                    print(parsedMove)
+                currentIndex=stateTransitions[currentIndex][thisStateMoves.index(tuple(parsedMove))]
+                reflections=symmetry(applyMoveToBoard(currentState,*parsedMove,False),1)[1]
+                '''if boardFlipping[2]^reflections[2]: #inelegant but necessary
+                    boardFlipping=[i^j for i,j in zip(boardFlipping[:2],reflections[1::-1])]+[1]
+                else:
+                    boardFlipping=[i^j for i,j in zip(boardFlipping[:2],reflections[:2])]+[0]'''
+                boardFlipping=[i^j for i,j in zip(boardFlipping,reflections)]
+                print(boardFlipping)
+            else:
+                tablebaseMoves=[i for i,j in enumerate(stateTransitions[currentIndex]) if isOptimal(j)]
+                #print(stateWinningnesses[currentIndex])
+                print("state "+str(currentIndex)+", I play",("the" if len(tablebaseMoves)==1 else "one of "+str(len(tablebaseMoves))),"optimal",str(("losing","drawing","winning")[stateWinningnesses[currentIndex][0]+1]),"move"+"s"*(len(tablebaseMoves)!=1)+".")
+                godMove=tablebaseMoves[random.randrange(len(tablebaseMoves))]
+                parsedMove=stateMoves[currentIndex][godMove]
+                currentIndex=stateTransitions[currentIndex][godMove]
     
     else: exit()
 else:
@@ -430,14 +435,14 @@ else:
                 i[0][1]=[di*(1-absVel*drag) for di in i[0][1]] #air resistance
             i[0][0]=list(map(sum,zip(i[0][0],i[0][1])))
         for i,(it,k) in enumerate(zip(stateTransitions[:-1],nodes[:-1])): #TypeError: 'zip' object is not subscriptable (I hate it so much)
-            for j,(jt,l) in enumerate(zip(stateTransitions[i+1:],nodes[i+1:])):
+            for j,(jt,l) in enumerate(zip(stateTransitions[i+1:],nodes[i+1:]),start=i+1):
                 differences=[li-ki for li,ki in zip(l[0][0],k[0][0])]
                 gravity=gravitationalConstant/max(1,sum(di**2 for di in differences)**1.5) #inverse-square law is 1/distance**2, for x axis is cos(angle of distance from axis)/(absolute distance)**2, the cos is x/(absolute), so is x/(abs)**3, however the sum outputs distance**2 so is exponentiated by 1.5 instead of 3
                 gravity=(gravity*l[2],gravity*k[2])
                 for ni,(ki,li,di) in enumerate(zip(k[0][1],l[0][1],differences)): #we are the knights who say ni
                     #print(ni,di)
-                    nodes[i][0][1][ni]+=di*(hookeStrength*(i+1+j in it)+gravity[0])
-                    nodes[i+1+j][0][1][ni]-=di*(hookeStrength*(i in jt)+gravity[1])
+                    nodes[i][0][1][ni]+=di*(hookeStrength*(j in it)+gravity[0])
+                    nodes[j][0][1][ni]-=di*(hookeStrength*(i in jt)+gravity[1])
 
     def quaternionMultiply(a,b):
         return [a[0]*b[0]-a[1]*b[1]-a[2]*b[2]-a[3]*b[3],
@@ -469,7 +474,7 @@ else:
 
     gain=1
     angularVelocityConversionFactor=math.tau/FPS
-    colourMode=0
+    colourMode=False
     oldSpace=False
     run=True
     while run:
@@ -478,10 +483,10 @@ else:
         keys=pygame.key.get_pressed()
         space=keys[pygame.K_SPACE]
         if space==0!=oldSpace:
-            colourMode^=1
+            colourMode^=True
         oldSpace=space
         if dims==3:
-            if mouse.get_pressed()[0]==1:
+            if mouse.get_pressed()[0]:
                 mouseChange=mouse.get_rel()
                 mouseChange=(-mouseChange[1],mouseChange[0],0)
             else:
@@ -495,7 +500,7 @@ else:
             cameraAngle[0]=rotateByScreen(cameraAngle[0],[ci+mi for ci,mi in zip(cameraAngle[1],mouseChange)])
         nodeScreenPositions=findSquareScreenPositions()
         #print(nodeScreenPositions)
-        renderOrder=[j for _, j in sorted((p[2],i) for i,p in enumerate(nodeScreenPositions))]
+        renderOrder=[j for _, j in sorted((p[2],i) for i,p in enumerate(nodeScreenPositions))] #perhaps replace with zip(*sorted((p[2],i) for i,p in enumerate(nodeScreenPositions)))[1] (not sure)
         nodeScreenPositions=[p[:2] for p in nodeScreenPositions]
         physics()
         for sc,st,k,n in zip(nodeScreenPositions,stateWinningnesses,stateTransitions,nodes):
@@ -506,6 +511,6 @@ else:
         for i,j,n in [(i,nodeScreenPositions[i],nodes[i]) for i in renderOrder]:
             drawShape(n[1],j,n[3][colourMode],5)
             if clickDone and i!=boardLastPrinted and sum((ji-mi)**2 for ji,mi in zip(j,mousePos))<n[1][0]**2:
-                print(printBoard(states[i]))
+                printBoard(states[i])
                 boardLastPrinted=i
     else: exit()

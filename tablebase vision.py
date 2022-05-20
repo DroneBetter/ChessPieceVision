@@ -9,8 +9,10 @@ def conditionalReverse(reverse,toBe): #for where walrus not allowed
     return reversed(toBe) if reverse else toBe
 def moddiv(a,b): #big endians get out ree
     return divmod(a,b)[::-1]
+def lap(func,*iterables): #Python 3 was a mistake
+    return list(map(func,*iterables))
 
-boardWidth=8
+boardWidth=3
 halfWidth=(boardWidth-1)//2
 boardSquares=boardWidth**2
 pieceNames=["empty","king","queen","rook","bishop","knight","pawn","nightrider"]
@@ -167,8 +169,6 @@ def attackMask(attackSet,kings=False,kingPositions=[0,0],invert=False):
             for m in findPieceMoves((),p,(1,0)):
                 attacks[m][i]=True
     return attacks
-def atacheck(attacks,kingPositions):
-    return (attacks,*[attacks[p][1-i] for i,p in enumerate(kingPositions)])
 
 for ci,c in enumerate(combinations):
     piecePermutations=tuple(generatePermutations(c,boardSquares-2-len(c))) #leaving as generator expression causes many problems
@@ -185,9 +185,10 @@ for ci,c in enumerate(combinations):
     combinationTurnwises.append(sorted(playerPieces[0])==sorted(playerPieces[1])) #not very elegant
     tralseToday=turnwise and combinationTurnwises[-1] #it's going to happen soon (but not today)
     aPoStaLin=((attackSet(i,tralseToday),p,i,l) for p,i,l in ((p,tuple(constructState(k,m)),l) for p,k,l in zip(kingPositions,kingStates,kingLineOfSymmetry) for m in map(iter,piecePermutations))) #portmanteau for "attack, position, state, line"
-    (newStates,newTurns,newSquareAttacks,newChecks)=( zip(*(i[:4] for i in ((i,Tralse,*atacheck(attackMask(a),p)) for a,p,i,l in aPoStaLin if not symmetryReduction or l==-1 or not axialDisparity(i,l)) if not i[4])) #not tuple(boardReflect(constructState(k,m)) if l!=-1 and axialDisparity(constructState(k,m),l) else tuple(constructState(k,m)) for k,l in zip(kingStates,kingLineOfSymmetry) for m in map(iter,piecePermutations)) because the reflected (reduced) one will appear anyway
+    (newStates,newTurns,newSquareAttacks,newChecks)=( zip(*((i,Tralse,attackMask(a),((p[0],1) in a)) for a,p,i,l in aPoStaLin if not symmetryReduction or l==-1 or not axialDisparity(i,l) and (p[1],0) not in a)) #not tuple(boardReflect(constructState(k,m)) if l!=-1 and axialDisparity(constructState(k,m),l) else tuple(constructState(k,m)) for k,l in zip(kingStates,kingLineOfSymmetry) for m in map(iter,piecePermutations)) because the reflected (reduced) one will appear anyway
                                                      if tralseToday else
-                                                      zip(*chain.from_iterable((i[:4] for i in ((i,False,*atacheck(attackMask(a,True,p),p)),(boardReflect(changeTurn(i),l),True,*atacheck(boardReflect(attackMask(a,True,p,True),l),p))) if not i[4]) for a,p,i,l in aPoStaLin if not symmetryReduction or l==-1 or not axialDisparity(i,l))))
+                                                      zip(*chain.from_iterable(((                        i,    False,             attackMask(a,True,p     ),   ((p[0],1) in a)),)*((p[1],0) not in a)+
+                                                                               ((boardReflect(changeTurn(i),l), True,boardReflect(attackMask(a,True,p,True),l),((p[0],0) in a)),)*((p[1],1) not in a) for a,p,i,l in aPoStaLin if not symmetryReduction or l==-1 or not axialDisparity(i,l))))
     states+=newStates
     stateTurns+=newTurns
     stateSquareAttacks+=newSquareAttacks
@@ -199,10 +200,6 @@ def isSymmetry(state,kingPositions): #only for those with kings eightfolded alre
     if all(i%boardWidth==i//boardWidth for i in kingPositions):
         return axialDisparity(state,2)
     return False
-
-#stateSquareAttacks=[attackMask(attackedSquares) for attackedSquares in map(attackSet,states)] #like states list but without turn to move and with (attacked by white,attacked by black) for each square
-#stateChecks=[a[q[0]][1] for q,a in zip(stateKingPositions,stateSquareAttacks)]
-
 
 def compoundReflect(board,axes):
     return board if axes==(0,0,0) else tuple(x for y in conditionalReverse(axes[not axes[2]],range(boardWidth)) for x in conditionalReverse(axes[axes[2]],(board[y:y+boardSquares:boardWidth] if axes[2] else board[y*boardWidth:(y+1)*boardWidth]))) #equivalent to
@@ -241,26 +238,6 @@ def symmetry(state,reflectionMode=0): #reflection modes: 0 reduces by eightfold,
 
 print(len(states),"states")
 
-#(newStates,newSquareAttacks,newChecks)=zip(*[(s,[[(q,l) in a for l in range(2)] for q in range(boardSquares)],((k[0],True) in a)) for t,i in zip(combinationTurnwises,starmap(slice,pairwise(combinationIndices))) if not symmetryReduction or not t for s,a,l,k in ((s,attackSet(s),l,k) for s,l,k in zip(map(boardReflect,map(changeTurn,states[i]),stateKingLinesOfSymmetry[i]),stateKingLinesOfSymmetry[i],stateKingPositions[i])) if (k[1],False) not in a]) #zip iterators were originally meant to be s,l,a,c,k with checks also but then I realised they were inapplicable
-#print("transitions between",len(states),"states:",stateTransitions)
-#stateIllegalities=[c[1] for c,s in zip(stateChecks,states)] #0 is good, 1 is incorrect symmetry, 2 is illegal
-#print(len(filter(None,stateIllegalities)),"illegal states")
-#print("state illegalities",stateIllegalities)
-#k=iter(range(len(states)))
-#stateNewIDs=[None if i else next(k) for s,i in zip(states,stateIllegalities)]
-#def pruneIllegalities(stateList):
-    #return tuple(j for i,j in zip(stateIllegalities,stateList) if not i)
-#print(len(states),"states pruned to",len([i for i in stateNewIDs if i!=None]))
-
-#stateChecks=tuple(j[0] for i,j in zip(stateIllegalities,stateChecks) if i==0)+newChecks
-#states=pruneIllegalities(states)
-#stateTurns=(False,)*len(states)+(True,)*len(newStates) #is less meaningful when turnwise reduction makes turn not always alternate (should be managed by program using tablebase (if not doing regular tablebase things))
-#states+=newStates
-#stateSquareAttacks=pruneIllegalities(stateSquareAttacks)#+newSquareAttacks #formerly [compoundReflect(a,r) for a,r in zip(newSquareAttacks,newReflections)] if symmetryReduction else "" #state formatted [[attacked by white?,attacked by black?] for square in range(boardSquares)] #do not change to "map(reversed,a)" (it will say "TypeError: 'map' object is not subscriptable")
-#print(len(states),"states:",states)
-#print(len(stateSquareAttacks),"state square attacks:",stateSquareAttacks)
-#print("now",len(states),len(stateTurns),len(stateSquareAttacks),len(stateChecks))
-
 stateDict={s:i for i,s in enumerate(states if turnwise else zip(stateTurns,states))}
 print("state dict done")
 #print(min((print(i,j,q,s),len(s)) for i,(s,a) in enumerate(zip(states,stateSquareAttacks)) for j,q in enumerate(a)))
@@ -276,6 +253,7 @@ print(*[list(zip(*([(None,)*2] if r==[[]]*boardSquares else [((i,m[0]),m[1]) for
 exit()'''
 (stateMoves,stateTransitions)=[[() if mt==(None,) else mt for mt in l] for l in zip(*[list(zip(*([(None,)*2] if r==[[]]*boardSquares else [((i,m[0]),m[1]) for i,q in enumerate(r) for m in q]))) for r in ([[] if q[0]==0 or q[1] else [(m,stateDict[d]) for m,d in ((m,dictInput(s,i,m)) for m in findPieceMoves(s,i,q) if s[m][0]==0 or q[1]!=s[m][1]) if (d in stateDict if True else (q[0]!=1 or not a[m][1]))] for i,q in enumerate(s)] for s,a in zip(states,stateSquareAttacks))])] #you can replace "if True" with "if any((j[0] in iterativePieces) for j in d)", if you make it account for the fact that when king is in check, other pieces are unmovable except to obstruct or capture attacking piece
 #replace stateDict with (print(s),print(tuple(tuple(int(j) for j in i) for i in a)),stateDict[d]) for diagnostics
+#print("transitions between",len(states),"states:",stateTransitions)
 print("state moves and transitions done")
 stateParents=tuple([[] for i in range(len(states))]) #[[]]*len(states) makes them all point to the same one, it seems
 for i,s in enumerate(stateTransitions):
@@ -337,20 +315,24 @@ def initialisePygame(guiMode):
     global black
     black=(0,0,0)
     global colours
-    colours=((236,217,185),(174,137,104),(255,255,255),(0,0,0),(255,0,0),(255,255,0),(0,255,0)) #using lichess's square colours but do not tell lichess
+    colours=[(236,217,185),(174,137,104),(255,255,255),(0,0,0),(255,0,0),(255,255,0),(0,255,0)] #using lichess's square colours but do not tell lichess
     global averageColours
-    def averageColours(*c):
-        return tuple([math.sqrt(sum(c[i]**2 for c in colours)) for i in range(3)]) #correct way, I think
-    colours.insert(2,averageColours(*colours[:2]))
+    def averageColours(colours):
+        return tuple([math.sqrt(sum(c[i]**2 for c in colours)/len(colours)) for i in range(3)]) #correct way, I think
+    colours.insert(2,averageColours(colours[:2]))
     #light, dark, white, black, red, yellow, green
     global dims
     dims=3
     global size
     size=[1050]*dims
-    if guiMode==1: #guiMode van Russom
+    if guiMode: #guiMode van Russom
         size=[i//boardWidth*boardWidth for i in size]
         global pieceImages
         pieceImages=[[pygame.image.load(os.path.join(imagePath,"Chess_"+i+("d" if j else "l")+"t45.svg")) for i in pieceSymbols[1][1:6]] for j in range(2)]
+    global minSize
+    minSize=min(size[:2])
+    global halfSize
+    halfSize=[s/2 for s in size]
     global screen
     screen = pygame.display.set_mode(size[:2],pygame.RESIZABLE)
     global drawShape
@@ -378,6 +360,8 @@ def initialisePygame(guiMode):
                 clickDone=1
             if event.type==pygame.WINDOWRESIZED:
                 size[:2]=screen.get_rect().size
+                minSize=min(size[:2])
+                halfSize[:2]=[s/2 for s in size[:2]]
         pygame.display.flip()
         clock.tick(FPS)
         screen.fill(black)
@@ -448,7 +432,7 @@ if input("Would you like to play chess with God (y) or see the state transition 
                 #clickedSquare=positionReflect(clickedSquare,boardFlipping,1)
         import pygame
         from pygame.locals import *
-        initialisePygame(1)
+        initialisePygame(True)
         selectedSquare=-1
         clickedSquare=-1
         selectedness=False
@@ -514,24 +498,26 @@ if input("Would you like to play chess with God (y) or see the state transition 
 else:
     import pygame
     from pygame.locals import *
-    initialisePygame(0)
-    cameraPosition=[i/2 for i in size]
+    initialisePygame(False)
+    rad=halfSize[0]/len(states)
+    #bitColours=[[int(255*(math.cos((j/n-i/3)*2*math.pi)+1)/2) for i in range(3)] for j in range(n)]
+    nodes=[[[[s*rad]+halfSize[1:],[0]+[random.random()/2**8 for di in range(dims-1)]],(rad,)*2, 1, (colours[2 if t==Tralse else t],colours[6+sgn(w[0])])] for s,(w,t) in enumerate(zip(stateWinningnesses,stateTurns))]
+    #each formatted [position,size,mass,colours]
+    def averageNode():
+        return [sum(i[0][0][di] for i in nodes)/len(nodes)-si for di,si in enumerate(halfSize)]
+    cameraPosition=[averageNode(),[0.0]*3] #must be 0.0, not 0 (to be float for the lap(float.__add__))
     cameraAngle=[[1]+[0]*3,[0]*3]
     clickDone=0
     boardLastPrinted=0
-    rad=size[0]/len(states)
-    #bitColours=[[int(255*(math.cos((j/n-i/3)*2*math.pi)+1)/2) for i in range(3)] for j in range(n)]
-    nodes=[[[[s*rad]+[di/2 for di in size[:3]],[0]+[random.random()/2**8 for di in range(dims-1)]],(rad,)*2, 1, (colours[2 if t==Tralse else t],colours[6+sgn(w[0])])] for s,(w,t) in enumerate(zip(stateWinningnesses,stateTurns))]
-    #each formatted [position,size,mass,colours]
     drag=0.1
     gravitationalConstant=-(size[0]/10)*(64/len(nodes))**2
     hookeStrength=1/size[0]
     def physics():
         for i in nodes:
             if drag>0:
-                absVel=max(1,math.sqrt(sum(di**2 for di in i[0][1]))) #each dimension's deceleration from drag is its magnitude as a component of the unit vector of velocity times absolute velocity squared, is actual component times absolute velocity.
+                absVel=max(1,math.hypot(*i[0][1])) #each dimension's deceleration from drag is its magnitude as a component of the unit vector of velocity times absolute velocity squared, is actual component times absolute velocity.
                 i[0][1]=[di*(1-absVel*drag) for di in i[0][1]] #air resistance
-            i[0][0]=list(map(sum,zip(i[0][0],i[0][1])))
+            i[0][0]=lap(float.__add__,i[0][0],i[0][1])
         for i,(it,k) in enumerate(zip(stateTransitions[:-1],nodes[:-1])): #TypeError: 'zip' object is not subscriptable (I hate it so much)
             for j,(jt,l) in enumerate(zip(stateTransitions[i+1:],nodes[i+1:]),start=i+1):
                 differences=[li-ki for li,ki in zip(l[0][0],k[0][0])]
@@ -548,15 +534,34 @@ else:
                 a[0]*b[2]-a[1]*b[3]+a[2]*b[0]+a[3]*b[1],
                 a[0]*b[3]+a[1]*b[2]-a[2]*b[1]+a[3]*b[0]] #this function not to be taken to before 1843
 
-    def quaternionConjugate(q):
-        return [q[0]]+[-i for i in q[1:]]
+    def quaternionConjugate(q): #usually conjugation is inverting the imaginary parts but as all quaternion enthusiasts know, inverting all four axes is ineffectual so inverting the first is ineffectually different from inverting the other three 
+        return [-q[0]]+q[1:] #(if you care about memory and not computing power, only the other three need to be stored with their polarities relative to it and the first's sign can be fixed and its magnitude computed (because it's a unit vector))
 
     def rotateVector(v,q): #sR is stereographic radius (to be passed through to perspective function)
-        return quaternionMultiply(quaternionMultiply(q,[0]+v),quaternionConjugate(q))
-
+        #equivalent to
+        #return quaternionMultiply(quaternionMultiply(q,[0]+v),quaternionConjugate(q))[1:]
+        #32 lookups and 32 multiplications
+        #expands to (when you remove the v[0] components)
+        #return [-(q[1]*v[0]+q[2]*v[1]+q[3]*v[2])*q[0]+(q[0]*v[0]+q[2]*v[2]-q[3]*v[1])*q[1]+(q[0]*v[1]-q[1]*v[2]+q[3]*v[0])*q[2]+(q[0]*v[2]+q[1]*v[1]-q[2]*v[0])*q[3], #resolves to 0 (what did nature mean by this)
+        #        -(q[1]*v[0]+q[2]*v[1]+q[3]*v[2])*q[1]-(q[0]*v[0]+q[2]*v[2]-q[3]*v[1])*q[0]+(q[0]*v[1]-q[1]*v[2]+q[3]*v[0])*q[3]-(q[0]*v[2]+q[1]*v[1]-q[2]*v[0])*q[2],
+        #        -(q[1]*v[0]+q[2]*v[1]+q[3]*v[2])*q[2]-(q[0]*v[0]+q[2]*v[2]-q[3]*v[1])*q[3]-(q[0]*v[1]-q[1]*v[2]+q[3]*v[0])*q[0]+(q[0]*v[2]+q[1]*v[1]-q[2]*v[0])*q[1],
+        #        -(q[1]*v[0]+q[2]*v[1]+q[3]*v[2])*q[3]+(q[0]*v[0]+q[2]*v[2]-q[3]*v[1])*q[2]-(q[0]*v[1]-q[1]*v[2]+q[3]*v[0])*q[1]-(q[0]*v[2]+q[1]*v[1]-q[2]*v[0])*q[0]][1:]
+        #112 lookups and 64 multiplications (or 84 and 48 without computing real component (that is 0))
+        #when simplified and factorised by v terms (to be a rotation matrix), becomes
+        #return [(-q[0]**2-q[1]**2+q[2]**2+q[3]**2)*v[0]+2*((q[0]*q[3]-q[1]*q[2])*v[1]-(q[0]*q[2]+q[1]*q[3])*v[2]),
+        #        (-q[0]**2+q[1]**2-q[2]**2+q[3]**2)*v[1]+2*((q[0]*q[1]-q[2]*q[3])*v[2]-(q[1]*q[2]+q[0]*q[3])*v[0]),
+        #        (-q[0]**2+q[1]**2+q[2]**2-q[3]**2)*v[2]+2*((q[0]*q[2]-q[1]*q[3])*v[0]-(q[0]*q[1]+q[2]*q[3])*v[1])]
+        #45 lookups and 36 multiplications
+        #and when you remember that q[0]**2+q[1]**2+q[2]**2+q[3]**2=1, you can reduce to an equivalent form to the one on Wikipedia
+        return [(2*(q[2]**2+q[3]**2)-1)*v[0]+2*((q[0]*q[3]-q[1]*q[2])*v[1]-(q[0]*q[2]+q[1]*q[3])*v[2]),
+                (2*(q[1]**2+q[3]**2)-1)*v[1]+2*((q[0]*q[1]-q[2]*q[3])*v[2]-(q[1]*q[2]+q[0]*q[3])*v[0]),
+                (2*(q[1]**2+q[2]**2)-1)*v[2]+2*((q[0]*q[2]-q[1]*q[3])*v[0]-(q[0]*q[1]+q[2]*q[3])*v[1])]
+        #39 lookups and 33 multiplications (though of which 6 are doublings)
+        #when rotating a million vectors by a million quaternions, original takes 6.034s, new takes 3.524s
+         
     pixelAngle=math.tau/max(size)
     def rotateByScreen(angle,screenRotation):
-        magnitude=math.sqrt(sum(i**2 for i in screenRotation))
+        magnitude=math.hypot(*screenRotation)
         if magnitude==0:
             return angle
         else:
@@ -564,21 +569,54 @@ else:
             simagomag=math.sin(magpi)/magnitude #come and get your simagomags delivered fresh
             return quaternionMultiply([math.cos(magpi)]+[i*simagomag for i in screenRotation], angle)
 
-    def findSquareScreenPositions():
-        output=[[si-di for si,di in zip(s[0][0],cameraPosition)] for s in nodes]
+    projectionMode=2
+    def projectRelativeToScreen(position,radius=rad): #input differences from player position after rotation applied #radius only necessary for stereographic
+        (x,y,z)=position
+        if projectionMode==0: #weird
+            (i,j)=[math.atan2(i, z) for i in (x,y)]
+        else:
+            if projectionMode==1: #azimuthal equidistant
+                h=math.atan2((x**2+y**2),z**2)/math.hypot(x,y)
+                return (x*h*minSize+halfSize[0],y*h*minSize+halfSize[1],math.hypot(*position))
+            else:
+                magnitude=math.atan2(math.hypot(x,y),z) #other azimuthals
+                if projectionMode==2: #Lambert equi-area (not to be taken to before 1772)
+                    magnitude=2*abs(math.sin(magnitude/2)) #formerly math.sqrt(math.sin(magnitude)**2+(math.cos(magnitude)-1)**2)
+                elif projectionMode==3: #stereographic (trippy)
+                    if radius==0:
+                        magnitude=1/math.tan(magnitude/2) #equivalent to math.sin(magnitude)/(1-math.cos(magnitude))
+                    else: #doesn't only find centre but uses fact that circles on the unit sphere of the camera's eye are projected to circles on the plane
+                        h=math.hypot(x,y)
+                        hh=math.hypot(*position)
+                        offset=math.asin(radius/hh)
+                        s0=1/math.tan((magnitude-offset)/2) #>mfw no math.cot
+                        s1=1/math.tan((magnitude+offset)/2)
+                        radius=s1-s0
+                        magnitude=(s0+s1)/2
+                direction=math.atan2(x,y)
+        return (math.sin(direction)*magnitude*minSize+halfSize[0],math.cos(direction)*magnitude*minSize+halfSize[1],(math.hypot(*position) if projectionMode!=3 or radius==0 else radius))
+
+    def findNodeScreenPositions():
+        output=[n[0][0] for n in nodes]
         if dims==3:
-            output=[[i+si/2 for si,i in zip(size,rotateVector([di-si/2 for di,si in zip(s,size)],cameraAngle[0])[1:])] for s in output]
+            output=[rotateVector(lap(float.__sub__,n,cameraPosition[0]),cameraAngle[0]) for n in output]
+            if perspectiveMode:
+                output=lap(projectRelativeToScreen,output)
         return output
 
     gain=1
     angularVelocityConversionFactor=math.tau/FPS
+    perspectiveMode=True
     colourMode=False
     oldSpace=False
     run=True
     while run:
-        doEvents()
-        cameraPosition=[sum(i[0][0][di] for i in nodes)/len(nodes)-si/2 for di,si in enumerate(size)]
         keys=pygame.key.get_pressed()
+        doEvents()
+        if perspectiveMode:
+            cameraPosition=[lap(float.__add__,*cameraPosition),lap(float.__add__,cameraPosition[1],rotateVector([keys[pygame.K_d]-keys[pygame.K_a],keys[pygame.K_f]-keys[pygame.K_r],keys[pygame.K_w]-keys[pygame.K_s]],[-cameraAngle[0][0]]+cameraAngle[0][1:4]))]
+        else:
+            cameraPosition[0]=averageNode()
         space=keys[pygame.K_SPACE]
         if space==0!=oldSpace:
             colourMode^=True
@@ -590,13 +628,13 @@ else:
             else:
                 mouse.get_rel() #otherwise it jumps
                 mouseChange=(0,)*3
-            arrowAccs=[keys[pygame.K_UP]-keys[pygame.K_DOWN],keys[pygame.K_RIGHT]-keys[pygame.K_LEFT],keys[pygame.K_e]-keys[pygame.K_q]] 
+            arrowAccs=[keys[pygame.K_DOWN]-keys[pygame.K_UP],keys[pygame.K_LEFT]-keys[pygame.K_RIGHT],keys[pygame.K_q]-keys[pygame.K_e]] 
             magnitude=math.sqrt(sum(map(abs,arrowAccs)))
             if magnitude!=0:
                 arrowAccs=[i/magnitude for i in arrowAccs]
             cameraAngle[1]=[(di+acc*gain*angularVelocityConversionFactor)/(1+drag) for di,acc in zip(cameraAngle[1],arrowAccs)]
             cameraAngle[0]=rotateByScreen(cameraAngle[0],[ci+mi for ci,mi in zip(cameraAngle[1],mouseChange)])
-        nodeScreenPositions=findSquareScreenPositions()
+        nodeScreenPositions=findNodeScreenPositions()
         #print(nodeScreenPositions)
         renderOrder=[j for _, j in sorted((p[2],i) for i,p in enumerate(nodeScreenPositions))] #perhaps replace with zip(*sorted((p[2],i) for i,p in enumerate(nodeScreenPositions)))[1] (not sure)
         nodeScreenPositions=[p[:2] for p in nodeScreenPositions]

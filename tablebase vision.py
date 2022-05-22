@@ -5,14 +5,16 @@ from itertools import pairwise,groupby,starmap,chain
 from functools import reduce
 def sgn(n):
     return 1 if n>0 else -1 if n<0 else 0
-def conditionalReverse(reverse,toBe): #for where walrus not allowed
-    return reversed(toBe) if reverse else toBe
 def moddiv(a,b): #big endians get out ree
     return divmod(a,b)[::-1]
+def conditionalReverse(reversal,toBe):
+    return reversed(toBe) if reversal else toBe
+def conditionalFlip(flip,toBe):
+    return boardWidth+~toBe if flip else toBe
 def lap(func,*iterables): #Python 3 was a mistake
     return list(map(func,*iterables))
 
-boardWidth=3
+boardWidth=8
 halfWidth=(boardWidth-1)//2
 boardSquares=boardWidth**2
 pieceNames=["empty","king","queen","rook","bishop","knight","pawn","nightrider"]
@@ -25,7 +27,7 @@ def parseMaterial(materialString): #I think in the endgame material notation, th
     return [(pieceSymbols[0].index(j),c) for c,i in enumerate(materialString.split("v")) for j in (i[1:] if i[0]=="K" else i)]
 def generateCombinations(material):
     return {c for m in range(len(material)+1) for c in combinations(material,m)}
-combinations=generateCombinations(parseMaterial("KRvK"))
+combinations=generateCombinations(parseMaterial("KvK"))
 print("combinations:",combinations)
 def generatePermutations(material,squares):
     return multiset_permutations(material+((0,0),)*squares)
@@ -46,7 +48,7 @@ def findPieceMoves(boardState,position,piece): #outputs list of squares to which
         for i,(p,b,n) in enumerate(increments[elementaryIterativePieces.index(piece[0])]): #indice, (polarity, boolean polarity,increment)
             arm=position
             #armSpatial=(spatial[i%2] if piece[0]==3 else spatial)
-            for i in range((boardWidth-1-spatial[i%2] if b else spatial[i%2]) if piece[0]==3 else min((boardWidth-1-s if bi else s) for s,bi in zip(spatial,b)) if piece[0]==4 else min((boardWidth-1-s if pi>0 else s)//abs(pi) for s,pi in zip(spatial,p))):
+            for i in range(conditionalFlip(b,spatial[i%2]) if piece[0]==3 else min(conditionalFlip(bi,s) for s,bi in zip(spatial,b)) if piece[0]==4 else min(conditionalFlip(pi>0,s)//abs(pi) for s,pi in zip(spatial,p))):
                 '''if piece[0]==3:
                     armSpatial+=p
                 else:
@@ -59,7 +61,7 @@ def findPieceMoves(boardState,position,piece): #outputs list of squares to which
     if piece[0]==5:
         if knightMovesPrecomputed:
             return precomputedKnightMoves[position]
-        moves=[(position+xPolarity*(2-skewedness)+yPolarity*(1+skewedness)*boardWidth) for skewedness in range(2) for xPolarity in range(-1,3,2) if (spatial[0]<boardWidth-2+skewedness if xPolarity==1 else spatial[0]>1-skewedness) for yPolarity in range(-1,3,2) if (spatial[1]<boardWidth-1-skewedness if yPolarity==1 else spatial[1]>skewedness)] #do not touch (you will break it) #could perhaps be made more elegant by XORing skewedness with di to reuse condition
+        moves=[(position+xPolarity*(2-skewedness)+yPolarity*(1+skewedness)*boardWidth) for skewedness in range(2) for xPolarity in range(-1,3,2) if (spatial[0]<boardWidth-2+skewedness if xPolarity==1 else spatial[0]>1-skewedness) for yPolarity in range(-1,3,2) if (spatial[1]<boardWidth+~skewedness if yPolarity==1 else spatial[1]>skewedness)] #do not touch (you will break it) #could perhaps be made more elegant by XORing skewedness with di to reuse condition
     return moves
 def precomputeKnightMoves():
     return [findPieceMoves(((0,0),)*boardSquares,i,(5,0)) for i in range(boardSquares)]
@@ -72,51 +74,83 @@ def firstDisparity(both): #from https://stackoverflow.com/a/15830697
     return next((a[0]*(1-2*a[1])-b[0]*(1-2*b[1]) for a,b in both if a!=b),0)<0
 def axialDisparity(state,axis,flippings=(False,)*3,reverse=True): #the intended board flipping is reversed to find the index of (the square in the intended board) in the current board ((1,0,1) and (0,1,1) are the only flipping tuples that are each other's inverses instead of their own)
     return False if axis==-1 else firstDisparity(
+            ((state[i] for i in conditionalReverse(flippings[2],(conditionalFlip(flippings[flippings[2]&reverse],x)+conditionalFlip(flippings[1^flippings[2]&reverse],y)*boardWidth,
+                                                                 conditionalFlip(flippings[flippings[2]&reverse],y)+conditionalFlip(flippings[1^flippings[2]&reverse],x)*boardWidth))) for x in range(boardWidth) for y in range(x))
+           if axis==2 else
+            ((state[conditionalFlip(i^flippings[flippings[2]&reverse],x)*boardWidth**(axis^flippings[2])+conditionalFlip(flippings[1^(flippings[2]&reverse)],y)*boardWidth**(1^axis^flippings[2])] for i in range(2)) for x in range(halfWidth) for y in range(boardWidth)))
+    #equivalent to (but fixed from)
+    '''firstDisparity(
             ((state[i] for i in conditionalReverse(flippings[2],
-                     ( (boardSquares-1-x-y*boardWidth,boardSquares-1-y-x*boardWidth)
-                      if flippings[0]^(flippings[2] and reverse) else
-                       (x+boardSquares-(1+y)*boardWidth,y+boardSquares-(1+x)*boardWidth))
+                     ( (boardSquares+~x-y*boardWidth,boardSquares+~y-x*boardWidth)
+                      if flippings[0]^(flippings[2]&reverse) else
+                       (x+(boardWidth+~y)*boardWidth,y+(boardWidth+~x)*boardWidth))
                     if flippings[0]^flippings[1] else
-                     ( ((1+y)*boardWidth-1-x,(1+x)*boardWidth-1-y)
+                     ( ((1+y)*boardWidth+~x,(1+x)*boardWidth+~y)
                       if flippings[0] else
                        (x+y*boardWidth,y+x*boardWidth))))
                     for x in range(boardWidth) for y in range(x)) #hardcoded tuples instead of an i loop because the transposition is otherwise by exponentiation (like the old one uses (see below)) is slow, I think 
            if axis==2 else
-            ((state[ ( ( y+(x*(2*i-1)+(boardWidth-1)*(1-i))*boardWidth
+            ((state[ ( ( y+conditionalFlip(1-i,x)*boardWidth
                         if flippings[0]^reverse else
-                         (boardWidth-1-y)+(x*(1-2*i)+(boardWidth-1)*i)*boardWidth)
+                         (boardWidth+~y)+conditionalFlip(i,x)*boardWidth)
                       if flippings[0]^flippings[1] else
-                       ( (boardWidth-1-y)+(x*(2*i-1)+(boardWidth-1)*(1-i))*boardWidth
+                       ( (boardWidth+~y)+conditionalFlip(1-i,x)*boardWidth
                         if flippings[0] else
-                         y+(x*(1-2*i)+(boardWidth-1)*i)*boardWidth))
+                         y+conditionalFlip(i,x)*boardWidth))
                     if flippings[2]^axis else #axis either 0 or 1
-                    ( (  x*(2*i-1)+(boardWidth-1)*(1-i)+(boardWidth-1-y)*boardWidth
+                    ( (  conditionalFlip(1-i,x)+(boardWidth+~y)*boardWidth
                         if flippings[0] else
-                         x*(1-2*i)+(boardWidth-1)*i+(boardWidth-1-y)*boardWidth)
+                         conditionalFlip(i,x)+(boardWidth+~y)*boardWidth)
                       if flippings[1] else
-                      (  x*(2*i-1)+(boardWidth-1)*(1-i)+y*boardWidth
+                       ( conditionalFlip(1-i,x)+y*boardWidth
                         if flippings[0] else
-                         x*(1-2*i)+(boardWidth-1)*i+y*boardWidth))
-                    ] for i in range(2)) for x in range(halfWidth) for y in range(boardWidth)))
+                         conditionalFlip(i,x)+y*boardWidth))
+                    ] for i in range(2)) for x in range(halfWidth) for y in range(boardWidth)))''' #x and y actually only mean first and second iterables
     #old version (from when it was only a special-case exception for x scanning with uncertain y):
-    #return firstDisparity(((state[x*boardWidth**i+y*boardWidth**(1-i)] for i in range(2)) for x in range(boardWidth) for y in range(x)) if axis==2 else ((state[x*(1-2*i)*boardWidth**axis+(boardWidth-1-y if suspicious else y)*boardWidth**(1-axis)+(boardWidth-1)*i] for i in range(2)) for x in range(halfWidth) for y in range(boardWidth)))
+    #return firstDisparity(((state[x*boardWidth**i+y*boardWidth**(1-i)] for i in range(2)) for x in range(boardWidth) for y in range(x)) if axis==2 else ((state[conditionalFlip(i,x)*boardWidth**axis+conditionalFlip(suspicious,y)*boardWidth**(1-axis)] for i in range(2)) for x in range(halfWidth) for y in range(boardWidth)))
 
 def axialReflect(position,axis):
-    return boardWidth-1-position+position//boardWidth*boardWidth*2 if axis==0 else position%boardWidth+(boardWidth-1-position//boardWidth)*boardWidth if axis==1 else position//boardWidth+(position%boardWidth)*boardWidth if axis==2 else position
+    return boardWidth+~position+position//boardWidth*boardWidth*2 if axis==0 else position%boardWidth+(boardWidth+~position//boardWidth)*boardWidth if axis==1 else position//boardWidth+(position%boardWidth)*boardWidth if axis==2 else position
+def checkTranslation(position,displacement,scrollings): #Python recognises all nonzero ints as True, and Möbius scrolling doesn't matter for verifying whether a displacement is legal (the other axis is flipped but its out-of-boundness is the same)
+    return ( scrollings[0] or 0<=position%boardWidth+displacement%boardWidth<boardWidth  #True #torus/Klein/real projective
+                                                                                        #if scrollings[0] else
+                                                                                         #0<=position%boardWidth+displacement%boardWidth<boardWidth) #vertically-scrolling cylinder/Möbius strip
+            if scrollings[1] else
+             0<=position//boardWidth+displacement//boardWidth<boardWidth #horizontally-scrolling cylinder/Möbius strip #you would multiply both by boardWidth after floordiv but instead divide boardSquares
+            if scrollings[0] else
+             0<=position+displacement<boardSquares and 0<=position%boardWidth+displacement%boardWidth<boardWidth) #square
+
+def translate(position,displacement,scrollings): #scrollings are 0 for bounded board behaviour, 1 for toroidal, 2 for Möbius
+    return (  conditionalFlip((position//boardWidth+displacement//boardWidth)//boardWidth%2,(position+displacement)%boardWidth)+conditionalFlip((position%boardWidth+displacement%boardWidth)//boardWidth,position//boardWidth+displacement//boardWidth)*boardWidth #real projective plane
+             if scrollings[0]==2 else
+              conditionalFlip((position//boardWidth+displacement//boardWidth)//boardWidth%2,(position+displacement)%boardWidth)+(position//boardWidth+displacement//boardWidth)*boardWidth #vertical Klein bottle if scrollings[0] else vertical Möbius strip (however they're computed the same (the inputs are up to you to get right (with checkTranslation)))
+           if scrollings[1]==2 else
+            ( (position+displacement)%boardWidth+conditionalFlip((position%boardWidth+displacement%boardWidth)//boardWidth,position//boardWidth+displacement//boardWidth)%boardWidth*boardWidth #horizontal Klein bottle
+             if scrollings[0]==2 else
+              (position+displacement)%boardWidth+(position//boardWidth+displacement//boardWidth)%boardWidth*boardWidth #torus
+             if scrollings[0] else
+              (position%boardWidth+displacement%boardWidth)+(position//boardWidth+displacement//boardWidth)%boardWidth*boardWidth) #vertical cylinder
+           if scrollings[1] else
+            ( (position+displacement)%boardWidth+conditionalFlip((position%boardWidth+displacement%boardWidth)//boardWidth,position//boardWidth+displacement//boardWidth)*boardWidth #horizontal Möbius strip
+             if scrollings[0]==2 else
+              (position+displacement)%boardWidth+(position//boardWidth+displacement//boardWidth)*boardWidth #horizontal cylinder #equivalent to (position%boardWidth+displacement%boardWidth)%boardWidth+(position//boardWidth+displacement//boardWidth)*boardWidth because (p%w+d%w)%w=(p+d)%w
+             if scrollings[0] else
+              position+displacement)) #square
+
 def positionReflect(position,axes,reverse=0): #some are probably reducible further (depending on whether floor division or modulo is more efficient, but also probably regardless)
-    return ( ( ( boardWidth*(boardWidth-1-position)+(1+boardSquares)*position//boardWidth
+    return ( ( ( boardWidth*(boardWidth+~position)+(1+boardSquares)*position//boardWidth
                 if axes[0]^reverse else
                  (position+1)*boardWidth-(boardSquares+1)*(position//boardWidth)-1)
               if axes[0]^axes[1] else
-               ( (1-boardSquares)*((-1-position)//boardWidth)-position*boardWidth
+               ( (1-boardSquares)*(~position//boardWidth)-position*boardWidth
                 if axes[0] else
                  position//boardWidth+position%boardWidth*boardWidth))
             if axes[2] else
-             ( ( boardSquares-1-position
+             ( ( boardSquares+~position
                 if axes[0] else
                  position+boardSquares-boardWidth*(1+2*position//boardWidth))
               if axes[1] else
-               ( boardWidth-1-position+2*boardWidth*(position//boardWidth)
+               ( boardWidth+~position+2*boardWidth*(position//boardWidth)
                 if axes[0] else
                  position)))
     #equivalent to (but more efficient than)
@@ -194,6 +228,11 @@ for ci,c in enumerate(combinations):
     stateSquareAttacks+=newSquareAttacks
     stateChecks+=newChecks
     combinationIndices.append(len(states))
+print(len(states),"states")
+stateDict={s:i for i,s in enumerate(states if turnwise else zip(stateTurns,states))}
+print("state dict done")
+#print(min((print(i,j,q,s),len(s)) for i,(s,a) in enumerate(zip(states,stateSquareAttacks)) for j,q in enumerate(a)))
+
 def isSymmetry(state,kingPositions): #only for those with kings eightfolded already
     if all(i%boardWidth==halfWidth for i in kingPositions) and boardWidth%2==1:
         return axialDisparity(state,0)
@@ -228,19 +267,13 @@ def symmetry(state,reflectionMode=0): #reflection modes: 0 reduces by eightfold,
     for d,w,b in zip(range(1+(not pawns)),*kingPositions): #iterating through dimensions (pretty cool)
         if w>halfWidth or (boardWidth%2==1 and w==halfWidth and (b>halfWidth or (b==halfWidth and axialDisparity(state,d,([0,(d==0 and (kingPositions[0][1]>halfWidth or (kingPositions[0][1]==halfWidth and kingPositions[1][1]>halfWidth))),0] if d==0 else reflections))))): #the black king can't be on the halfWidth also because it's only one square
             reflections[d]=1
-            kingPositions=[(boardWidth-1-i[0],i[1]) if d==0 else (i[0],boardWidth-1-i[1]) for i in kingPositions]
+            kingPositions=[(boardWidth+~i[0],i[1]) if d==0 else (i[0],boardWidth+~i[1]) for i in kingPositions]
     if pawns:
         return state
     reflections[2]=(kingPositions[0][0]<kingPositions[0][1] or (kingPositions[0][0]==kingPositions[0][1] and (kingPositions[1][0]<kingPositions[1][1] or (kingPositions[1][0]==kingPositions[1][1] and axialDisparity(state,2,reflections))))) #flip white king to bottom-right diagonal half of bottom-left quarter
     if reflectionMode<2:
         state=compoundReflect(state,reflections)
     return reflections if reflectionMode==2 else (state,reflections) if reflectionMode==1 else state
-
-print(len(states),"states")
-
-stateDict={s:i for i,s in enumerate(states if turnwise else zip(stateTurns,states))}
-print("state dict done")
-#print(min((print(i,j,q,s),len(s)) for i,(s,a) in enumerate(zip(states,stateSquareAttacks)) for j,q in enumerate(a)))
 
 def applyMoveToBoard(state,piece,move,invert=True):
     return tuple((0,0) if k==piece else (((state[piece][0],1-state[piece][1]) if invert else state[piece]) if k==move else ((r[0],1-r[1]) if invert else r) if r[0]!=0 else (0,0)) for k,r in enumerate(state)) #must be (0,0) in particular because (0,1) will be for en passant mask
@@ -327,8 +360,13 @@ def initialisePygame(guiMode):
     size=[1050]*dims
     if guiMode: #guiMode van Russom
         size=[i//boardWidth*boardWidth for i in size]
-        global pieceImages
+    global imageMode
+    imageMode=True
+    global pieceImages
+    try:
         pieceImages=[[pygame.image.load(os.path.join(imagePath,"Chess_"+i+("d" if j else "l")+"t45.svg")) for i in pieceSymbols[1][1:6]] for j in range(2)]
+    except:
+        imageMode=False
     global minSize
     minSize=min(size[:2])
     global halfSize
@@ -342,10 +380,31 @@ def initialisePygame(guiMode):
         elif shape<5:
             pygame.draw.polygon(screen,colour,[[p+s/2*math.cos(((i+shape/2)/(2 if shape==4 else 4)+di/2)*math.pi) for di,(p,s) in enumerate(zip(pos,size))] for i in range(4 if shape==4 else 8)])
         else:
-            pygame.draw.circle(screen,colour,pos,size[0]/2)
+            pygame.draw.circle(screen,colour,pos,size/2)
     global drawLine
     def drawLine(initial,destination,colour):
         pygame.draw.line(screen,colour,initial,destination)
+    global renderBoard
+    def renderBoard(state,perceivedMoves,interactive,boardSize=minSize,renderPosition=(0,0)):
+        squareSize=boardSize//boardWidth
+        for i,s in enumerate(state):
+            if interactive:
+                m=[selectedSquare,i]
+            squarePosition=[i%boardWidth,(boardWidth+~i//boardWidth)] #I hate Pygame's coordinates so much
+            screenPosition=[r+s*squareSize for r,s in zip(renderPosition,squarePosition)]
+            drawShape([squareSize]*2,screenPosition,(((0,255,0) if isOptimal(stateTransitions[currentIndex][perceivedMoves.index(m)]) else (255,0,0)) if interactive and selectedness and m in perceivedMoves else colours[sum(squarePosition)%2]),0)
+            if s!=(0,0):
+                colour=(0,255,0) if (interactive and i==selectedSquare and selectedness) else colours[3+s[1]]
+                if s[0]!=0:
+                    if imageMode and s[0]<7:
+                        screen.blit(pygame.transform.scale(pieceImages[s[1]][s[0]-1],[squareSize]*2),screenPosition)
+                    else:
+                        drawShape([squareSize*3/4]*2,[(i+1/(8 if s[0]==3 else 2))*squareSize for i in squarePosition],colour,(0 if s[0]==3 else s[0]))
+        if interactive and clickDone and all(0<=m<boardSize for m in mousePos[:2]):
+            global clickedSquare
+            clickedSquare=sum(conditionalFlip(di,zm)*boardWidth**di for di,m in enumerate(m//squareSize for m in mousePos[:2]))
+            #clickedSquare=positionReflect(clickedSquare,boardFlipping,1)
+
     global mouse
     mouse=pygame.mouse
     global doEvents
@@ -413,31 +472,12 @@ if input("Would you like to play chess with God (y) or see the state transition 
         return stateWinningnesses[i][0]==0 if stateWinningnesses[currentIndex][1]==None else stateWinningnesses[i]==(-stateWinningnesses[currentIndex][0],stateWinningnesses[currentIndex][1]-1)
     guiMode=(input("Would you like a GUI? (y/n)")=="y")
     if guiMode:
-        imageMode=True
-        def renderBoard(state,perceivedMoves):
-            global clickedSquare
-            for i,s,m in [(i,s,[selectedSquare,i]) for i,s in enumerate(state)]:
-                squarePosition=[i%boardWidth,(boardWidth-1-i//boardWidth)]
-                screenPosition=[i*squareSize for i in squarePosition]
-                drawShape([squareSize]*2,screenPosition,(((0,255,0) if isOptimal(stateTransitions[currentIndex][perceivedMoves.index(m)]) else (255,0,0)) if selectedness and m in perceivedMoves else colours[sum(squarePosition)%2]),0)
-                if s!=(0,0):
-                    colour=(0,255,0) if (i==selectedSquare and selectedness) else colours[3+s[1]]
-                    if s[0]!=0:
-                        if imageMode and s[0]<7:
-                            screen.blit(pygame.transform.scale(pieceImages[s[1]][s[0]-1],[squareSize]*2),screenPosition)
-                        else:
-                            drawShape([squareSize*3/4]*2,[(i+1/(8 if s[0]==3 else 2))*squareSize for i in squarePosition],colour,(0 if s[0]==3 else s[0]))
-            if clickDone and all(0<=m<boardSize for m in mousePos[:2]):
-                clickedSquare=sum((boardWidth-1-m if di==1 else m)*boardWidth**di for di,m in enumerate(m//squareSize for m in mousePos[:2]))
-                #clickedSquare=positionReflect(clickedSquare,boardFlipping,1)
         import pygame
         from pygame.locals import *
         initialisePygame(True)
         selectedSquare=-1
         clickedSquare=-1
         selectedness=False
-        boardSize=min(size[:2])
-        squareSize=boardSize//boardWidth
     run=True
     while run:
         currentIndex=random.randrange(len(states)) #use stateWinningnesses.index((-1,20)) to be checkmated in 10 in KNNNvK
@@ -465,7 +505,7 @@ if input("Would you like to play chess with God (y) or see the state transition 
                         if clickDone:
                             mousePos=mouse.get_pos()
                             #print([di/squareSize for di in mousePos])
-                        renderBoard(perceivedState,apparentMoves)
+                        renderBoard(perceivedState,apparentMoves,True)
                         if clickedSquare!=-1:
                             print(clickedSquare)
                             if perceivedState[clickedSquare][0]!=0 and perceivedState[clickedSquare][1]==humanColour:
@@ -574,26 +614,25 @@ else:
         (x,y,z)=position
         if projectionMode==0: #weird
             (i,j)=[math.atan2(i, z) for i in (x,y)]
+        elif projectionMode==1: #azimuthal equidistant
+            h=math.atan2((x**2+y**2),z**2)/math.hypot(x,y)
+            return (x*h*minSize+halfSize[0],y*h*minSize+halfSize[1],math.hypot(*position))
         else:
-            if projectionMode==1: #azimuthal equidistant
-                h=math.atan2((x**2+y**2),z**2)/math.hypot(x,y)
-                return (x*h*minSize+halfSize[0],y*h*minSize+halfSize[1],math.hypot(*position))
-            else:
-                magnitude=math.atan2(math.hypot(x,y),z) #other azimuthals
-                if projectionMode==2: #Lambert equi-area (not to be taken to before 1772)
-                    magnitude=2*abs(math.sin(magnitude/2)) #formerly math.sqrt(math.sin(magnitude)**2+(math.cos(magnitude)-1)**2)
-                elif projectionMode==3: #stereographic (trippy)
-                    if radius==0:
-                        magnitude=1/math.tan(magnitude/2) #equivalent to math.sin(magnitude)/(1-math.cos(magnitude))
-                    else: #doesn't only find centre but uses fact that circles on the unit sphere of the camera's eye are projected to circles on the plane
-                        h=math.hypot(x,y)
-                        hh=math.hypot(*position)
-                        offset=math.asin(radius/hh)
-                        s0=1/math.tan((magnitude-offset)/2) #>mfw no math.cot
-                        s1=1/math.tan((magnitude+offset)/2)
-                        radius=s1-s0
-                        magnitude=(s0+s1)/2
-                direction=math.atan2(x,y)
+            magnitude=math.atan2(math.hypot(x,y),z) #other azimuthals
+            if projectionMode==2: #Lambert equi-area (not to be taken to before 1772)
+                magnitude=2*abs(math.sin(magnitude/2)) #formerly math.sqrt(math.sin(magnitude)**2+(math.cos(magnitude)-1)**2)
+            elif projectionMode==3: #stereographic (trippy)
+                if radius==0:
+                    magnitude=1/math.tan(magnitude/2) #equivalent to math.sin(magnitude)/(1-math.cos(magnitude))
+                else: #doesn't only find centre but uses fact that circles on the unit sphere of the camera's eye are projected to circles on the plane
+                    h=math.hypot(x,y)
+                    hh=math.hypot(*position)
+                    offset=math.asin(radius/hh)
+                    s0=1/math.tan((magnitude-offset)/2) #>mfw no math.cot
+                    s1=1/math.tan((magnitude+offset)/2)
+                    radius=s1-s0
+                    magnitude=(s0+s1)/2
+            direction=math.atan2(x,y)
         return (math.sin(direction)*magnitude*minSize+halfSize[0],math.cos(direction)*magnitude*minSize+halfSize[1],(math.hypot(*position) if projectionMode!=3 or radius==0 else radius))
 
     def findNodeScreenPositions():
@@ -636,17 +675,20 @@ else:
             cameraAngle[0]=rotateByScreen(cameraAngle[0],[ci+mi for ci,mi in zip(cameraAngle[1],mouseChange)])
         nodeScreenPositions=findNodeScreenPositions()
         #print(nodeScreenPositions)
-        renderOrder=[j for _, j in sorted((p[2],i) for i,p in enumerate(nodeScreenPositions))] #perhaps replace with zip(*sorted((p[2],i) for i,p in enumerate(nodeScreenPositions)))[1] (not sure)
-        nodeScreenPositions=[p[:2] for p in nodeScreenPositions]
+        renderOrder=conditionalReverse(perspectiveMode,[j for _, j in sorted((p[2],i) for i,p in enumerate(nodeScreenPositions))]) #perhaps replace with zip(*sorted((p[2],i) for i,p in enumerate(nodeScreenPositions)))[1] (not sure)
         physics()
         for sc,st,k,n in zip(nodeScreenPositions,stateWinningnesses,stateTransitions,nodes):
             for l in k:
-                drawLine(sc,nodeScreenPositions[l],n[3][colourMode])
+                drawLine(sc[:2],nodeScreenPositions[l][:2],n[3][colourMode])
         if clickDone:
             mousePos=mouse.get_pos()
-        for i,j,n in [(i,nodeScreenPositions[i],nodes[i]) for i in renderOrder]:
-            drawShape(n[1],j,n[3][colourMode],5)
-            if clickDone and i!=boardLastPrinted and sum((ji-mi)**2 for ji,mi in zip(j,mousePos))<n[1][0]**2:
-                printBoard(states[i])
-                boardLastPrinted=i
+        for i,j,n,s in [(i,nodeScreenPositions[i],nodes[i],states[i]) for i in renderOrder]:
+            sezi=2*((j[2] if projectionMode==3 else n[1][0]*minSize/j[2]) if perspectiveMode else n[1][0]) #different from size
+            if perspectiveMode and sezi>minSize/64: #they will not notice if it is smaller, I hope
+                renderBoard(s,[],False,sezi,[p-sezi/2 for p in j[:2]])
+            else:
+                drawShape(sezi,j[:2],n[3][colourMode],5)
+                if clickDone and i!=boardLastPrinted and sum((ji-mi)**2 for ji,mi in zip(j,mousePos))<n[1][0]**2:
+                    printBoard(states[i])
+                    boardLastPrinted=i
     else: exit()

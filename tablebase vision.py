@@ -17,8 +17,11 @@ def lap(func,*iterables): #Python 3 was a mistake
     return list(map(func,*iterables))
 
 boardWidth=4
-halfWidth=(boardWidth-1)//2
 boardSquares=boardWidth**2
+halfWidth=(boardWidth-1)//2
+centre=(boardSquares-1)/2
+if boardWidth%2:
+    centre=int(centre)
 pieceNames=["empty","king","queen","rook","bishop","knight","pawn","nightrider"]
 iterativePieces=[           2,      3,     4,                       7]
 elementaryIterativePieces=[         3,     4,                       7] #may be optimisable further for nightriders because kings can't move to squares that are only in check after being moved to with them
@@ -29,7 +32,6 @@ def parseMaterial(materialString): #I think in the endgame material notation, th
 def generateCombinations(material):
     #if any((6,i) in material for i in range(2)):
     pawns=[[j for j,m in enumerate(material) if m==(6,i)] for i in range(2)]
-    #promotionCombinations=2**sum(map(len,pawns)) #[{c for m in range(len(pawns)+1) for c in combinations(pawns[0]+pawns[1],m)}]
     if pawns==[[],[]]:
         return {c for m in range(len(material)+1) for c in combinations(material,m)}
     else:
@@ -40,16 +42,12 @@ def generateCombinations(material):
             while arm<len(p):
                 promotions[:arm]=[promotions[arm] for i in range(arm)] #inapplicable on first loop but in subsequent ones is as though it is at the end except guaranteed not to be out of bounds
                 arm=0
-                #print(promotions)
-                #i=iter(promotions)
-                promotionses[o].append(list(promotions)) #([next(i[m[1]]) if m[0]==6 else m for m in material])
-                #print(promotionses[o][-1],[len(i) for i in promotionses])
+                promotionses[o].append(list(promotions))
                 promotions[0]-=1
-                while promotions[arm]==1: #rare instance wherein list indices beginning at 1 are more elegant
+                while promotions[arm]==1:
                     arm+=1
                     if arm<len(promotions) and promotions[arm]>1:
                         promotions[arm]-=1 #would set to 6 if it were standard counting in a base, but this way prevents permutations that reiterate combinations
-                        #print(promotions[arm])
                     else:
                         break
         promotionses=[[[(t,i) for t in o] for o in p] for i,p in enumerate(promotionses)]
@@ -91,7 +89,7 @@ def findPieceMoves(boardState,position,piece,attackMask=False,moveTuples=False):
                         #if boardState[arm][1]!=piece[1]: #formerly moves.append(arm) was conditional here, but capturing own colour isn't allowed by stateMoves generator and this way kings won't be able to take pieces defended by iterative pieces (which will be useful if I ever do implement pin masks and such instead of the current use of dict presence)
                         break
         elif piece[0]==5:
-            moves=precomputedKnightMoves[position] if knightMovesPrecomputed else [(position+xPolarity*(2-skewedness)+yPolarity*(1+skewedness)*boardWidth) for skewedness in range(2) for xPolarity in range(-1,3,2) if (spatial[0]<boardWidth-2+skewedness if xPolarity==1 else spatial[0]>1-skewedness) for yPolarity in range(-1,3,2) if (spatial[1]<boardWidth+~skewedness if yPolarity==1 else spatial[1]>skewedness)] #do not touch (you will break it) #could perhaps be made more elegant by XORing skewedness with di to reuse condition
+            moves=precomputedKnightMoves[position] if knightMovesPrecomputed else [position+(xPolarity*boardWidth+yPolarity if skewedness else yPolarity*boardWidth+xPolarity) for skewedness in range(2) for xPolarity in range(-2,6,4) if (spatial[skewedness]<boardWidth-2 if xPolarity==2 else spatial[skewedness]>1) for yPolarity in range(-1,3,2) if (spatial[1^skewedness]<boardWidth-1 if yPolarity==1 else spatial[1^skewedness]>0)]
         elif piece[0]==6:
             vertical=boardWidth*(-1)**piece[1] #>mfw no e**(i*pi*piece[1])
             moves=([position+vertical-1]*(0<position%boardWidth)+[position+vertical+1]*(position%boardWidth<boardWidth-1) if attackMask==1 else [position+vertical+i for i in range(-1,2,1) if 0<=position%boardWidth+i<boardWidth and (boardState[position+vertical+i][0]==0)^i]+[position+2*vertical]*(conditionalFlip(piece[1],position//boardWidth)==1 and boardWidth>3 and boardState[position+vertical]==boardState[position+2*vertical][0]==0)) if conditionalFlip(not piece[1],position//boardWidth)>0 else [] #it is inefficient but I like the XOR
@@ -227,7 +225,7 @@ diagonalHalf=[x+y*boardWidth for x in range(boardWidth) for y in range(x+1)]
 def generateKingPositions(pawns):
     whiteKingRange=(leftHalf if pawns else [x+y*boardWidth for x in range(math.ceil(boardWidth/2)) for y in range(x+1)]) if symmetryReduction else range(boardSquares)
     #print("permutation lengths (should be "+str(boardSquares)+"):",map(len,piecePermutations))
-    kingPositions=[(i,j) for i,iKingMoves in zip(whiteKingRange,[findPieceMoves(((0,0),)*boardSquares,i,(1,0)) for i in whiteKingRange]) for j in ((whiteKingRange if i==(boardSquares-1)/2 else leftHalf if i%boardWidth==(boardWidth-1)/2 else diagonalHalf if i%boardWidth==i//boardWidth and pawns==0 else range(boardSquares)) if symmetryReduction else range(boardSquares)) if not (i==j or j in iKingMoves)]
+    kingPositions=[(i,j) for i,iKingMoves in zip(whiteKingRange,[findPieceMoves(((0,0),)*boardSquares,i,(1,0)) for i in whiteKingRange]) for j in ((whiteKingRange if i==centre else leftHalf if i%boardWidth==(boardWidth-1)/2 else diagonalHalf if i%boardWidth==i//boardWidth and pawns==0 else range(boardSquares)) if symmetryReduction else range(boardSquares)) if not (i==j or j in iKingMoves)]
     kingStates=[tuple((int(k==i or k==j),int(k==j)) for k in range(boardSquares)) for i,j in kingPositions] #each square in each state list (in the list of them) is a list of the piece and its colour
     kingLineOfSymmetry=[2 if i%boardWidth==i//boardWidth and j%boardWidth==j//boardWidth and not pawns else (0 if i%boardWidth==j%boardWidth==halfWidth else 1 if i//boardWidth==j//boardWidth==halfWidth and not pawns else -1) if boardWidth%2==1 else -1 for i,j in kingPositions] #-1 for no symmetry, 0 for x, 1 for y, 2 for diagonal
     return (kingPositions,kingStates,kingLineOfSymmetry)
@@ -258,31 +256,135 @@ def attackMask(attackSet,kings=False,kingPositions=[0,0],invert=False):
 
 def conditions(s,l):
     return (not symmetryReduction or l==-1 or not axialDisparity(s,l)) and (not pawns or not any(q==6 for q in s[:boardWidth]+s[boardSquares-boardWidth:]))
-for ci,c in enumerate(combinations):
-    piecePermutations=tuple(generatePermutations(c,boardSquares-2-len(c))) #leaving as generator expression causes many problems
-    if ci==0:
-        pawns=any(p[0]==6 for p in c)
-        setKingPawnness(pawns)
-    elif any(p[0]==6 for p in c)!=pawns:
-        pawns^=True
-        setKingPawnness(pawns) #pawns prevent eightfold symmetry (I hate them so much)
-    playerPieces=[[],[]]
-    for i in c:
-        playerPieces[i[1]].append(i[0])
-        #playerPieces[i[1]].insert(next((j for j,k in enumerate(playerPieces[i[1]]) if i[0]<k),len(playerPieces[i[1]])),i[0]) #would be more elegant but changes O(n*log(n)) to O(n**2) (should use binary search instead)
-    combinationTurnwises.append(sorted(playerPieces[0])==sorted(playerPieces[1])) #not very elegant
-    tralseToday=turnwise and combinationTurnwises[-1] #it's going to happen soon (but not today)
-    aPoStaLin=((attackSet(i,tralseToday),p,i,l) for p,i,l in ((p,tuple(constructState(k,m)),l) for p,k,l in zip(kingPositions,kingStates,kingLineOfSymmetry) for m in map(iter,piecePermutations))) #portmanteau for "attack, position, state, line"
-    (newStates,newTurns,newSquareAttacks,newChecks)=zip(*(((i,Tralse,attackMask(a),((p[0],1) in a)) for a,p,i,l in aPoStaLin if ((p[1],0) not in a) and conditions(i,l))
-                                                                 #not tuple(boardReflect(constructState(k,m)) if l!=-1 and axialDisparity(constructState(k,m),l) else tuple(constructState(k,m)) for k,l in zip(kingStates,kingLineOfSymmetry) for m in map(iter,piecePermutations)) because the reflected (reduced) one will appear anyway
-                                                     if tralseToday else
-                                                      chain.from_iterable(((                        i,    False,             attackMask(a,True,p     ),   ((p[0],1) in a)),)*((p[1],0) not in a)+
-                                                                          ((boardReflect(changeTurn(i),l), True,boardReflect(attackMask(a,True,p,True),l),((p[0],0) in a)),)*((p[1],1) not in a) for a,p,i,l in aPoStaLin if conditions(i,l))))
-    states+=newStates
-    stateTurns+=newTurns
-    stateSquareAttacks+=newSquareAttacks
-    stateChecks+=newChecks
-    combinationIndices.append(len(states))
+chess=True
+if chess:
+    for ci,c in enumerate(combinations):
+        piecePermutations=tuple(generatePermutations(c,boardSquares-2-len(c))) #leaving as generator expression causes many problems
+        if ci==0:
+            pawns=any(p[0]==6 for p in c)
+            setKingPawnness(pawns)
+        elif any(p[0]==6 for p in c)!=pawns:
+            pawns^=True
+            setKingPawnness(pawns) #pawns prevent eightfold symmetry (I hate them so much)
+        playerPieces=[[],[]]
+        for i in c:
+            playerPieces[i[1]].append(i[0])
+            #playerPieces[i[1]].insert(next((j for j,k in enumerate(playerPieces[i[1]]) if i[0]<k),len(playerPieces[i[1]])),i[0]) #would be more elegant but changes O(n*log(n)) to O(n**2) (should use binary search instead)
+        combinationTurnwises.append(sorted(playerPieces[0])==sorted(playerPieces[1])) #not very elegant
+        tralseToday=turnwise and combinationTurnwises[-1] #it's going to happen soon (but not today)
+        aPoStaLin=((attackSet(i,tralseToday),p,i,l) for p,i,l in ((p,tuple(constructState(k,m)),l) for p,k,l in zip(kingPositions,kingStates,kingLineOfSymmetry) for m in map(iter,piecePermutations))) #portmanteau for "attack, position, state, line"
+        (newStates,newTurns,newSquareAttacks,newChecks)=zip(*(((i,Tralse,attackMask(a),((p[0],1) in a)) for a,p,i,l in aPoStaLin if ((p[1],0) not in a) and conditions(i,l))
+                                                                    #not tuple(boardReflect(constructState(k,m)) if l!=-1 and axialDisparity(constructState(k,m),l) else tuple(constructState(k,m)) for k,l in zip(kingStates,kingLineOfSymmetry) for m in map(iter,piecePermutations)) because the reflected (reduced) one will appear anyway
+                                                        if tralseToday else
+                                                        chain.from_iterable(((                        i,    False,             attackMask(a,True,p     ),   ((p[0],1) in a)),)*((p[1],0) not in a)+
+                                                                            ((boardReflect(changeTurn(i),l), True,boardReflect(attackMask(a,True,p,True),l),((p[0],0) in a)),)*((p[1],1) not in a) for a,p,i,l in aPoStaLin if conditions(i,l))))
+        states+=newStates
+        stateTurns+=newTurns
+        stateSquareAttacks+=newSquareAttacks
+        stateChecks+=newChecks
+        combinationIndices.append(len(states))
+else:
+    def generateCellular(): #with symmetry reduction
+        #may be used if caching such things allows speedup
+        '''configurations=[            # duplicates resolved by lexicographically minimal
+                                    # i, x,y,t,r, duplicate of  #r symmetry in y=-x line of symmetry, inapplicable
+            (False,False,False,False), # 0, 1,1,1,1
+            ( True,False,False,False), # 1, 1,0,0,0
+           #(False, True,False,False), # 2, 0,1,0,0, duplicate of 1
+            ( True, True,False,False), # 3, 0,0,1,0
+           #(False,False, True,False), # 4, 0,1,0,0, duplicate of 1
+           #( True,False, True,False), # 5, 0,0,0,1, duplicate of 3
+            (False, True, True,False), # 6, 1,1,0,0
+            ( True, True, True,False), # 7, 1,0,0,0
+           #(False,False,False, True), # 8, 1,0,0,0, duplicate of 1
+           #( True,False,False, True), # 9, 1,1,0,0, duplicate of 6
+           #(False, True,False, True), #10, 0,0,0,1, duplicate of 3
+           #( True, True,False, True), #11, 0,1,0,0, duplicate of 7
+           #(False,False, True, True), #12, 0,0,1,0, duplicate of 3
+           #( True,False, True, True), #13, 0,1,0,0, duplicate of 7
+           #(False, True, True, True), #14, 1,0,0,0, duplicate of 7
+            ( True, True, True, True)] #15, 1,1,1,1
+                                        #asymmetricalities:
+                                        #x=c[1]^c[2]
+                                        #y=c[0]^c[3]
+                                        #t=c[0]^c[1]|c[2]^c[3]
+                                        #r=c[0]^c[2]|c[1]^c[3]
+        #on 3*3 board, squares ordered orthogonal [(1,0),(0,1),(2,1),(1,2)]
+                                        #diagonal [(0,0),(2,0),(0,2),(2,2)]
+        #so diagonal indice comparisons for (x,y,t,r)=orthogonal ones for (t,r,x,y)'''
+        
+        def constructCellular(layers):
+            output=[False]*boardSquares
+            liter=iter(layers)
+            for x in range(halfWidth+1):
+                for y in range(x+1):
+                    indices=(([centre] if x==0 else #a perfect place
+                              [centre+x*p*(boardWidth if skewedness else 1) for skewedness in range(2) for p in range(-1,3,2)] if y==0 else                                           #on 3*3 board, is [(0,1),(2,1),(1,0),(1,2)]
+                              [centre+x*(xp+yp*boardWidth) for xp in range(-1,3,2) for yp in range(-1,3,2)] if y==x else                                                              #on 3*3 board, is [(0,0),(0,2),(2,0),(2,2)]
+                              [centre+conditionalTranspose(skewedness,x*xp,y*yp) for skewedness in range(2) for xp in range(-1,3,2) for yp in range(-1,3,2)]) if boardWidth%2==1 else #on 5*5 board, is [(0,1),(0,3),(4,1),(4,3),(1,0),(3,0),(1,4),(3,4)]
+                             ([int(centre+x*(xp+1/2+(yp+1/2)*boardWidth)) for xp in range(-1,3,2) for yp in range(-1,3,2)] if y==x else #very suspicious indeed                       #on 2*2 board, is [(0,0),(0,1),(1,0),(1,1)]
+                              [int(centre+conditionalTranspose(skewedness,(x+1/2)*xp,(y+1/2)*yp)) for skewedness in range(2) for xp in range(-1,3,2) for yp in range(-1,3,2)]))       #on 4*4 board, is [(0,1),(0,2),(3,1),(3,2),(1,0),(2,0),(1,3),(2,3)]
+                    #print(x,y,indices)
+                    for i,l in zip(indices,next(liter)): #next(liter) can be layers[int(x*(x+1)/2)+y-1], I think
+                        output[i]=l
+            return output
+        def layerSymmetry(l,t): 
+            return [True]*3 if t==1 else [l[0]==l[1],l[2]==l[3],l[0]==l[2] and l[1]==l[3]] if t==2 else [l[0]==l[2] and l[1]==l[3],l[0]==l[1] and l[2]==l[3],l[1]==l[2]] if t==3 else [l[0]==l[2] and l[1]==l[3] and l[4]==l[5] and l[6]==l[7],l[0]==l[1] and l[2]==l[3] and l[4]==l[6] and l[5]==l[7],l[0]==l[4] and l[1]==l[5] and l[2]==l[6] and l[3]==l[7]]
+        def isIllegal(l,t,s): #layer (contents), type, symmetry, returns whether the greater of any of the first disparities (outwards, across all preserved lines of symmetry) lies on the higher-indiced side
+            return (s[0] and l[0]<l[1]                       or s[1] and l[2]<l[3]                       or s[2] and l[2:1:-1]<l[0:6:3] if t==2 else #very suspicious
+                    s[0] and l[0:2]<l[2:4]                   or s[1] and l[0:4:2]<l[1:5:2]               or s[2] and l[1]<l[2] if t==3 else
+                    s[0] and l[0:2]+l[4:8:2]<l[2:4]+l[5:9:2] or s[1] and l[4:6]+l[0:4:2]<l[6:7]+l[1:5:2] or s[2] and (l[0:2]>l[4:6] or l[2:4]<l[6:8]) if t==0 else
+                    False)
+        def branchSymmetryMinusTwo(): #very suspicious
+            return [True]*3 if len(branchSymmetry)<=1 else branchSymmetry[-2]
+        layerTypes=[(1 if x==0 else 2 if y==0 else 3 if y==x else 0) if boardWidth%2==1 else (3 if y==x else 0) for x in range(halfWidth+1) for y in range(x+1)]
+        typeLengths=[8,1,4,4]
+        layers=[[False]*typeLengths[l] for l in layerTypes]
+        #print(layerTypes,layers)
+        branchSymmetry=[[True]*3]*(len(layers)+1)
+        arm=len(layers)-1
+        cellulars=[]
+        do=True
+        while arm>=0:
+            while True:
+                layers[arm][0]^=True
+                finger=0
+                #print("finger",arm,layers[arm][0])
+                while not layers[arm][finger]: #carry the 1 (leading bit of mantissa is always 1)
+                    finger+=1
+                    if finger==len(layers[arm]):
+                        layers[arm:len(layers)]=[[False]*typeLengths[l] for l in layerTypes[arm:len(layers)]] #would be arm+1 but is done before
+                        arm-=1
+                        #print("regress",arm)
+                        if arm>=0:
+                            del branchSymmetry[-1]
+                            layers[arm][0]^=True
+                            finger=0
+                            #print("continue from arm",arm)
+                            #break #bypasses while's else (if broken, this layer had no more legal states and the next must be regressed to instead) #edit: continues inline
+                        else:
+                            break
+                    else:
+                        layers[arm][finger]^=True
+                #else:
+                    #do=False
+                #print(arm,len(layers),len(layerTypes))
+                #print(layers[arm],layerTypes[arm],branchSymmetryMinusTwo(),len(branchSymmetry))
+                if arm<0:
+                    break
+                if not isIllegal(layers[arm],layerTypes[arm],branchSymmetryMinusTwo()):
+                    #print(branchSymmetry)
+                    branchSymmetry[-1]=lap(bool.__and__,branchSymmetryMinusTwo(),layerSymmetry(layers[arm],layerTypes[arm])) #very suspicious
+                    branchSymmetry+=[branchSymmetry[-1]]*(len(layers)-len(branchSymmetry))
+                    arm=len(layers)-1
+                    cellulars.append(constructCellular(layers))
+                    break
+        return cellulars
+    states=generateCellular()
+    print(len(states),"states")
+    exit()
+    #def iterateCellular(state,rule):
+
 print(len(states),"states")
 stateDict={s:i for i,s in enumerate(states if turnwise else zip(stateTurns,states))}
 print("state dict done")

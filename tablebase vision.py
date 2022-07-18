@@ -44,7 +44,7 @@ axisLetters=[["a","b","c","d","e","f","g","h"],["1","2","3","4","5","6","7","8"]
 def parseMaterial(materialString): #I think in the endgame material notation, the piece letters are all capitalised but the v isn't
     return [(pieceSymbols[0].index(j),c) for c,i in enumerate(materialString.split("v")) for j in (i[1:] if i[0]=="K" else i)]
 if chess:
-    material=parseMaterial("KQvKQ")
+    material=parseMaterial("KRBvKRB")
     def generateCombinations(material):
         #if any((6,i) in material for i in range(2)):
         pawns=[[j for j,m in enumerate(material) if m==(6,i)] for i in range(2)]
@@ -195,18 +195,17 @@ def findPieceMoves(boardState,position,piece,attackMask=False,moveTuples=False):
                         #if boardState[arm][1]!=piece[1]: #formerly moves.append(arm) was conditional here, but capturing own colour isn't allowed by stateMoves generator and this way kings won't be able to take pieces defended by iterative pieces (which will be useful if I ever do implement pin masks and such instead of the current use of dict presence) and check detection is done properly
                         break
         elif piece[0]==5:
-            moves=precomputedKnightMoves[position] if knightMovesPrecomputed else [translateTuple(position,xPolarity*(2-skewedness),yPolarity*(1+skewedness)) for skewedness in range(2) for xPolarity in range(-1,3,2) if manifold[0] or conditionalFlip(xPolarity==1,spatial[0])>1-skewedness for yPolarity in range(-1,3,2) if manifold[1] or conditionalFlip(yPolarity==1,spatial[1])>skewedness]
-                                                                                 #[translateTuple(position,*conditionalReverse(skewedness,(xPolarity,yPolarity))) for skewedness in range(2) for xPolarity in range(-2,6,4) if (boardWidth+~spatial[skewedness] if xPolarity==2 else spatial[skewedness])>1 for yPolarity in range(-1,3,2) if (boardWidth+~spatial[1^skewedness] if yPolarity==1 else spatial[1^skewedness])>0] (conditionalReverse inlined) is 25% faster for bounded boards
+            moves=[translateTuple(position,xPolarity*(2-skewedness),yPolarity*(1+skewedness)) for skewedness in range(2) for xPolarity in range(-1,3,2) if manifold[0] or conditionalFlip(xPolarity==1,spatial[0])>1-skewedness for yPolarity in range(-1,3,2) if manifold[1] or conditionalFlip(yPolarity==1,spatial[1])>skewedness]
+                                                                                                                                                 #[translateTuple(position,*conditionalReverse(skewedness,(xPolarity,yPolarity))) for skewedness in range(2) for xPolarity in range(-2,6,4) if (boardWidth+~spatial[skewedness] if xPolarity==2 else spatial[skewedness])>1 for yPolarity in range(-1,3,2) if (boardWidth+~spatial[1^skewedness] if yPolarity==1 else spatial[1^skewedness])>0] (conditionalReverse inlined) is 25% faster for bounded boards
         elif piece[0]==6:
             vertical=(-1)**piece[1] #>mfw no e**(i*pi*piece[1])
             moves=([translateTuple(position,-1,vertical)]*(manifold[0] or 0<spatial[0])+[translateTuple(position,1,vertical)]*(manifold[0] or spatial[0]<boardWidth-1) if attackMask==1 else [displace(position,vertical+i) for i in range(-1,2,1) if (manifold[0] or 0<=spatial[0]+i<boardWidth) and (boardState[displace(position,vertical+i)][0]==0)^i]+[displace(position,2*vertical)]*(conditionalFlip(piece[1],spatial[1])==1 and manifold[1] or boardWidth>3 and boardState[displace(position,vertical)]==boardState[displace(position,2*vertical)][0]==0)) if manifold[1] or conditionalFlip(not piece[1],spatial[1])>0 else [] #it is inefficient but I like the XOR
     return moves if not chess and (piece[0]==1 and not kingMovesPrecomputed or piece[0]==5 and not knightMovesPrecomputed) else ({(position,m,i) for m in moves for i in range(2,6)} if piece[0]==6 and conditionalFlip(not piece[1],spatial[1])==1 else {(position,m) for m in moves}) if moveTuples else set(moves)
 def precomputeMoves(piece):
     return tuple(findPieceMoves(((0,0),)*boardSquares,i,(piece,0)) for i in range(boardSquares))
-kingMovesPrecomputed=knightMovesPrecomputed=False
-precomputedKingMoves=precomputeMoves(1)
-precomputedKnightMoves=precomputeMoves(5)
-kingMovesPrecomputed=knightMovesPrecomputed=True
+kingMovesPrecomputed=False
+precomputedKingMoves=precomputeMoves(5)
+kingMovesPrecomputed=True
 
 def firstDisparity(both): #from https://stackoverflow.com/a/15830697
     return next((a[0]*(1-2*a[1])-b[0]*(1-2*b[1]) for a,b in both if a!=b),0)<0
@@ -690,11 +689,17 @@ if chess or symmetryReduction: #not necessary when no symmetry reduction in cell
 
 if chess:
     def applyMoveToBoard(state,move,invert=True):
-        return boardReflect(tuple(((move[2] if len(move)==3 else state[move[0]][0]),(state[move[0]][1]^invert)) if k==move[1] else (0,0) if k==move[0] or r[0]==0 else (r[0],r[1]^invert) for k,r in enumerate(state)),(1 if anyPawns and any(q[0]==6 for q in state) else -1)) #board flipped such that pawns of turn to move are always upwards
+        return boardReflect(tuple((move[1],invert) if move[0]==-1 and k==move[2] else ((move[2] if len(move)==3 else state[move[0]][0]),(state[move[0]][1]^invert)) if k==move[1] and move[0]!=-1 else (0,0) if k==move[0] or r[0]==0 else (r[0],r[1]^invert) for k,r in enumerate(state)),(1 if anyPawns and any(q[0]==6 for q in state) else -1)) #board flipped such that pawns of turn to move are always upwards
     def dictInput(s,m):
         #printBoard(symmetry(applyMoveToBoard(s,m)))
         return symmetry(applyMoveToBoard(s,m)) if turnwise else (not s[0],symmetry(applyMoveToBoard(s[1],m)))
-    (stateMoves,stateTransitions)=[[() if mt==(None,) else mt for mt in l] for l in zip(*[list(zip(*([(None,)*2] if r==[[]]*boardSquares else [m for q in r for m in q]))) for r in ([[] if q[0]==0 or q[1] else [(m,stateDict[d]) for m,d in ((m,dictInput(s,m)) for m in findPieceMoves(s,i,q,False,True) if s[m[1]][0]==0 or q[1]!=s[m[1]][1]) if (d in stateDict if True else (q[0]!=1 or not a[m[1]][1]))] for i,q in enumerate(s)] for s,a in zip(states,stateSquareAttacks))])] #you can replace "if True" with "if any((j[0] in iterativePieces) for j in d)", if you make it account for the fact that when king is in check, other pieces are unmovable except to obstruct or capture attacking piece
+    def piecesMissing(s):
+        missings=[[3,4],[3,4]]
+        for i in s:
+            if i[0] in missings[i[1]]:
+                missings[i[1]].remove(i[0])
+        return missings
+    (stateMoves,stateTransitions)=[[() if mt==(None,) else mt for mt in l]for l in zip(*[zip(*([(None,)*2] if r==[[]]*(boardSquares+1) else [m for q in r for m in q])) for r in ([[] if q[0]==0 and i!=-1 or q[1] else [(m,stateDict[d]) for m,d in ((m,dictInput(s,m)) for m in (((-1,o,p) for o in piecesMissing(s)[0] for p,r in enumerate(s) if r[0]==0) if i==-1 else findPieceMoves(s,i,q,False,True)) if s[m[1]][0]==0 or q[1]!=s[m[1]][1]) if (d in stateDict if True else (q[0]!=1 or not a[m[1]][1]))] for i,q in enumerate(((0,0),)+s,start=-1)] for s,a in zip(states,stateSquareAttacks))])] #you can replace "if True" with "if any((j[0] in iterativePieces) for j in d)", if you make it account for the fact that when king is in check, other pieces are unmovable except to obstruct or capture attacking piece
     #replace stateDict with (print(s),print(tuple(tuple(int(j) for j in i) for i in a)),stateDict[d]) for diagnostics
 else:
     stateTransitions=[stateDict[symmetry(iterateCellular(s,rule))] if symmetryReduction else stateInt(iterateCellular(s,rule)) for s in states]
@@ -862,6 +867,8 @@ if chess and input("Would you like to play chess with God (y) or see the state t
     def whereIs(square):
         return sum(axisLetters[i].index(square[i])*boardWidth**i for i in range(2))
     def parseMove(move,turnToMove,state,perceivedMoves): #supports descriptive and algebraic
+        if "@" in move:
+            return (pieceSymbols[0].index(move[0]),whereIs(move[2:]))
         if all(m in axisLetters[i] for i,m in enumerate(move[:2])):
             return [whereIs(move[2*i:2*i+2]) for i in range(2)]
         else:
@@ -902,7 +909,9 @@ if chess and input("Would you like to play chess with God (y) or see the state t
     run=True
     while run:
         print(maximumDTM)
-        currentIndex=stateWinningnesses.index(((-1)**(maximumDTM+1),maximumDTM))#random.randrange(len(states)) #use stateWinningnesses.index((-1,maximumDTM)) to see longest decisive position
+        currentIndex=states.index(symmetry(((1,0),(4,0),(3,0),
+                                            (0,0),(0,0),(0,0),
+                                            (1,1),(4,1),(3,1))))
         boardFlipping=[0]*3
         humanColour=0 if turnwise else stateTurns[currentIndex] #it includes a u because this is a British program (property of her majesty)
         turn=True
@@ -920,6 +929,7 @@ if chess and input("Would you like to play chess with God (y) or see the state t
                 apparentMoves=[[compoundPositionReflect(j,boardFlipping) for j in i] for i in thisStateMoves]
                 print(thisStateMoves)
                 print(apparentMoves,boardFlipping)
+                print("you are",("losing","drawing","winning")[stateWinningnesses[currentIndex][0]+1],"in",stateWinningnesses[currentIndex][1],"ply")
                 if guiMode:
                     moveDone=False
                     while run and not moveDone:

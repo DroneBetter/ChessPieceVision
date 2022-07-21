@@ -24,10 +24,12 @@ def conditionalTranspose(transpose,x,y): #to prevent having to reiterate in each
     return x*boardWidth+y if transpose else y*boardWidth+x
 def lap(func,*iterables): #Python 3 was a mistake
     return list(map(func,*iterables))
+def minmax(iterable):
+    return(min(iterable),max(iterable))
 
 chess=(input("Would you like chess (y) or cellular automata (n)? ")=="y")
 
-boardWidth=3
+boardWidth=4
 boardSquares=boardWidth**2
 halfWidth=(boardWidth-1)//2
 mediumHalfWidth=boardWidth//2
@@ -387,7 +389,6 @@ if chess:
         stateSquareAttacks+=newSquareAttacks
         stateChecks+=newChecks
         combinationIndices.append(len(states))
-    print(len(states),"states,",stateChecks.count(True),"in check")
     def printBoard(board):
         print("".join(["".join(("_" if letter==" " else letter+'\u0332') if (i+b)%2==0 else letter for i,letter in enumerate([pieceSymbols[s[1]][s[0]] for s in board[(b-1)*boardWidth:b*boardWidth]]))+"\n" for b in range(boardWidth,0,-1)])+"\033["+str(boardWidth-1)+"B",end="") #ANSI escape sequences
                                             #from https://stackoverflow.com/a/71034895      #light squares underlined
@@ -470,8 +471,8 @@ if chess:
             reflections=[False]*(3+sum(m for m in manifold if m==1))
         return reflections if reflectionMode==2 else (compoundReflect(state,reflections),reflections) if reflectionMode==1 else compoundReflect(state,reflections)
 else:
-    def printBoard(board,chequerboard=False): #British English program (god save the queen)
-        print("".join(["".join(("_" if letter==" " else letter+'\u0332') if (i+b)%2==0 and chequerboard else letter for i,letter in enumerate(["o" if s else " " for s in board[(b-1)*boardWidth:b*boardWidth]]))+"\n" for b in range(boardWidth,0,-1)])+"\033["+str(boardWidth)+"B",end="") #ANSI escape sequences
+    def printBoard(board,chequerboard=False,delimit=True): #British English program (god save the queen)
+        print("["*delimit+"".join(["".join(("_" if letter==" " else letter+'\u0332') if (i+b)%2==0 and chequerboard else letter for i,letter in enumerate(["o" if s else " " for s in board[(b-1)*boardWidth:b*boardWidth]]))+(("]\n" if b==1 else "\n ") if delimit else "\n") for b in range(boardWidth,0,-1)])+"\033["+str(boardWidth)+"B",end="") #ANSI escape sequences
     def layerIndices(x,y):
         return (([centre] if x==0 else #a perfect place                                                                                                               #1, on 1*1 board is [(0,0)]
                  [centre+x*p*(boardWidth if skewedness else 1) for skewedness in range(2) for p in range(-1,3,2)] if y==0 else                                        #2, on 3*3 board is [(0,1),(2,1),(1,0),(1,2)]
@@ -622,17 +623,14 @@ else:
         return cellulars
     
     states=generateCellular()
-    print(len(states),"states, should be",(int( (1/8)*(2**boardSquares+2*2**((boardSquares+3)/4)+2**((boardSquares+1)/2)+4*2**((boardSquares+boardWidth)/2))
-                                               if boardWidth%2 else #from https://oeis.org/A054247 (my beloved)
-                                                (1/8)*(2**boardSquares+2*2**(boardSquares/4)+3*2**(boardSquares/2)+2*2** ((boardSquares+boardWidth)/2)))
-                                               if symmetryReduction else
-                                                2**boardSquares))
     niemiec=True #whimsical
     def RLE(board,rule=""):
         return ("x ="+str(boardWidth)+", y = "+str(boardWidth)+", rule = "+rule+"\n")*bool(rule)+"$".join("".join(l*2 if niemiec and q==2 else l if q==1 else str(q)+l for l,q in [(("o"if l else "b"),len(list(q))) for l,q in groupby(board[b*boardWidth:(b+1)*boardWidth])]) for b in range(boardWidth-1,-1,-1))+"!"
     
     def stateInt(state):
         return sum(s<<i for i,s in enumerate(state))
+    def intState(integer):
+        return [integer>>i &1 for i in range(boardSquares)]
     transitions=["b0c","b1c","b2c","b3c","b2n","b4c","b1e","b2a","b2k","b3n","b3i","b4n","b3q","b3y","b4y","b5e","b2e","b3a","b3j","b4a","b4w","b5a","b3k","b4q","b4k","b5j","b5k","b6e","b3e","b4r","b4j","b5n","b5i","b6a","b5q","b5y","b6k","b7e","b2i","b3r","b4i","b4t","b5r","b4z","b6i","b4e","b5c","b6c","b7c","b6n","b8","s0","s1c","s2c","s3c","s2n","s4c","s1e","s2a","s2k","s3n","s3i","s4n","s3q","s3y","s4y","s5e","s2e","s3a","s3j","s4a","s4w","s5a","s3k","s4q","s4k","s5j","s5k","s6e","s3e","s4r","s4j","s5n","s5i","s6a","s5q","s5y","s6k","s7e","s2i","s3r","s4i","s4t","s5r","s4z","s6i","s4e","s5c","s6c","s7c","s6n","s8c"]
     totalTransitions=[{"c"}, #using c for 0 and 8 because otherwise no distinction from empty set
                       {"c","e"},
@@ -674,15 +672,33 @@ else:
                 accumulator=""
             else:
                 accumulator+=t
-    print(ruleTotalTransitions)
+    #print(ruleTotalTransitions)
     rule={("s" if i else "b")+str(j)+t for i,s in enumerate(ruleTotalTransitions) for j,ss in enumerate(s) for t in ss}
-    print(rule)
+    #print(rule)
     rule=[(t in rule) for t in transitions]
-    print(rule)
+    if manifold[0]==0 or manifold[1]==0:
+        (b1e,b2a,b1c,b2c,b3i)=(rule[transitions.index("b1e")],rule[transitions.index("b2a")],rule[transitions.index("b1c")],rule[transitions.index("b2c")],rule[transitions.index("b3i")])
+        if not any(manifold):
+            corners=b1c
+            nearCorners=(b1e or b2a)
+        edges=(b1c or b1e or b2a or b3i)
+    #print(rule)
     rule=[rule[t] for t in unreducedTransitions]
-    print(rule)
+    #print(rule)
+    #edgeNeighbourhoods=
     def iterateCellular(state,rule):
-        return [rule[stateInt([False if k==None else state[k] for k in precomputedKingMoves[i]])] for i in range(boardSquares)] #replace precomputedKingMoves with precomputedKnightMoves if you would like to have some fun
+        return ([rule[stateInt([False if k==None else state[k] for k in precomputedKingMoves[i]])] for i in range(boardSquares)],(edges and any((b1c and (s==(True,False,False) or s==(False,False,True)) or b1e and s==(False,True,False) or b2c and s==(True,False,True) or b3i and s==(True,True,True)) for s in (manifold[1]==0)*[state[i:i+3] for n in (0,boardSquares-boardWidth) for i in range(n,n+boardWidth-2)]+(manifold[0]==0)*[state[i:i+3*boardWidth:boardWidth] for n in (0,boardWidth-1) for i in range(n,n+boardSquares-2*boardWidth,boardWidth)]) or
+                                                                                                                                  corners and any(state[0],state[boardWidth-1],state[boardSquares-boardWidth],state[boardSquares-1]) or
+                                                                                                                                  nearCorners and any(state[x*(boardWidth-1)+y*(boardSquares-boardWidth):x*(boardWidth-1)+y*(boardSquares-boardWidth)+boardWidth**s*(-1)**(y if s else x):boardWidth**s*(-1)**(y if s else x)] for x in range(2) for y in range(2) for s in range(2)))) #replace precomputedKingMoves with precomputedKnightMoves if you would like to have some fun
+correctNumber=(int( (1/8)*(2**boardSquares+2*2**((boardSquares+3)/4)+2**((boardSquares+1)/2)+4*2**((boardSquares+boardWidth)/2))
+                   if boardWidth%2 else #from https://oeis.org/A054247 (my beloved)
+                    (1/8)*(2**boardSquares+2*2**(boardSquares/4)+3*2**(boardSquares/2)+2*2** ((boardSquares+boardWidth)/2)))
+                   if symmetryReduction else
+                    2**boardSquares)
+def plural(num,name):
+    return str(num)+" "+name+"s"*(num!=1)
+print(plural(len(states),"state")+", "+(("correct" if len(states)==correctNumber else "should be "+(str(correctNumber)+",")) if not chess else (str(stateChecks.count(True))+("in check" if chess else "exceeding bounds")))) #boundary exceedings currently computed with state transitions
+
 if chess or symmetryReduction: #not necessary when no symmetry reduction in cellular automata mode due to each state's binary representation being its index
     stateDict={s:i for i,s in enumerate(states if not chess or turnwise else zip(stateTurns,states))}
     print("state dict done")
@@ -697,9 +713,9 @@ if chess:
     (stateMoves,stateTransitions)=[[() if mt==(None,) else mt for mt in l] for l in zip(*[list(zip(*([(None,)*2] if r==[[]]*boardSquares else [m for q in r for m in q]))) for r in ([[] if q[0]==0 or q[1] else [(m,stateDict[d]) for m,d in ((m,dictInput(s,m)) for m in findPieceMoves(s,i,q,False,True) if s[m[1]][0]==0 or q[1]!=s[m[1]][1]) if (d in stateDict if True else (q[0]!=1 or not a[m[1]][1]))] for i,q in enumerate(s)] for s,a in zip(states,stateSquareAttacks))])] #you can replace "if True" with "if any((j[0] in iterativePieces) for j in d)", if you make it account for the fact that when king is in check, other pieces are unmovable except to obstruct or capture attacking piece
     #replace stateDict with (print(s),print(tuple(tuple(int(j) for j in i) for i in a)),stateDict[d]) for diagnostics
 else:
-    stateTransitions=[stateDict[symmetry(iterateCellular(s,rule))] if symmetryReduction else stateInt(iterateCellular(s,rule)) for s in states]
+    (stateTransitions,stateChecks)=zip(*[((stateDict[symmetry(c)] if symmetryReduction else stateInt(c)),i) for c,i in (iterateCellular(s,rule) for s in states)])
 #print("transitions between",len(states),"states:",stateTransitions)
-print("state "+"moves and "*chess+"transitions done")
+print("state "+"moves and "*chess+"transitions done"+(", "+str(stateChecks.count(True))+" states exceeding bounds")*(not chess))
 stateParents=tuple([[] for i in range(len(states))]) #[[]]*len(states) makes them all point to the same one, it seems
 for i,s in enumerate(stateTransitions):
     if chess:
@@ -752,6 +768,79 @@ if chess:
         else:
             cycles+=1
     printWinningnesses()
+else:
+    def displacements(oscillator): #intakes list of oscillator's states
+        if any(any(o) for o in oscillator):
+            cellTouchednesses=[any(o[i] for o in oscillator) for i in range(boardSquares)]
+            boundingBox=(*minmax([i%boardWidth for i,s in enumerate(cellTouchednesses) if s]),*minmax([i//boardWidth for i,s in enumerate(cellTouchednesses) if s]))
+            return {compoundReflect(scroll(o,-x,-y),[f>>i &1 for i in range(3)]) for o in oscillator for x in range(-boundingBox[0],boardWidth-boundingBox[1]) for y in range(-boundingBox[2],boardWidth-boundingBox[3]) for f in range(8)} #reflect after displacement to avoid having to displace by different values depending on reflectedness
+        else: #"The stars are receding. Oh, the vast emptiness!"
+            return {tuple(o) for o in oscillator} #"Yeah, yeah, I can take a hint."
+    stateLoops=[None]*len(states)
+    stateSearchednesses=[False]*len(states)
+    if symmetryReduction:
+        loops=[]
+    oscillators=[]
+    for i in range(len(states)):
+        j=i
+        jLoop=[]
+        while j not in jLoop:
+            if stateChecks[j] or stateSearchednesses[j]:
+                break
+            jLoop.append(j)
+            j=stateTransitions[j]
+        else:
+            collision=jLoop.index(j)
+            jLoopLength=len(jLoop)-collision
+            for j in jLoop:
+                stateSearchednesses[j]=True
+            jLoop=jLoop[collision:]
+            for j in jLoop:
+                stateLoops[j]=i
+            if symmetryReduction:
+                loops.append([states[j] for j in jLoop])
+            else:
+                oscillators.append(lap(intState,jLoop))
+    if symmetryReduction:
+        for l in loops: #find non-modulo true periods (for which reflections don't count)
+            asymmetricLoop=[]
+            s=list(l[0])
+            while s not in asymmetricLoop:
+                asymmetricLoop.append(s)
+                s=iterateCellular(s,rule)
+                if s[1]:
+                    break
+                else:
+                    s=s[0]
+            else: #if not broken
+                oscillators.append(asymmetricLoop)
+    for i,o in enumerate(oscillators):
+        for d in displacements(o):
+            removals=[ni for ni,no in enumerate(oscillators[i+1:],start=i+1) if list(d) in no] #run away
+            '''if len(removals)>0:
+                print("wibble")
+                printBoard(d)
+                printBoard(oscillators[removals[0]][0])'''
+            for r in removals:
+                del oscillators[r]
+    oscillatoryPeriods=[]
+    periodInstances=[]
+    for o in oscillators:
+        if len(o) in oscillatoryPeriods:
+            periodInstances[oscillatoryPeriods.index(len(o))]+=1
+        else:
+            oscillatoryPeriods.append(len(o))
+            periodInstances.append(1)
+    (oscillatoryPeriods,periodInstances)=zip(*sorted(zip(oscillatoryPeriods,periodInstances)))
+    print((plural(periodInstances[oscillatoryPeriods.index(1)],"still life")+", " if 1 in oscillatoryPeriods else "")+(plural(sum(len(o)!=1 for o in oscillators),"oscillator") if len(oscillatoryPeriods)-(1 in oscillatoryPeriods)>0 else ""))
+    for p,i in zip(oscillatoryPeriods[(1 in oscillatoryPeriods):],periodInstances[(1 in oscillatoryPeriods):]):
+        print(plural(i,"period "+str(p)+" oscillator"))
+    if oscillatoryPeriods!=[]: #not redundant, some rules have no such bounded patterns
+        if input("print all "+(("self-sustaining patterns" if len(oscillatoryPeriods)>1 else "still lifes") if 1 in oscillatoryPeriods else "oscillators")+"? (y/n)")=="y":
+            for o in oscillators:
+                print("still life" if len(o)==1 else ("period "+str(len(o))+" oscillator"),RLE(o[0]))
+                for s in o:
+                    printBoard(s)
 
 def initialisePygame(guiMode):
     global clock
@@ -962,6 +1051,8 @@ if chess and input("Would you like to play chess with God (y) or see the state t
                 currentIndex=stateTransitions[currentIndex][godMove]
     else: exit()
 else:
+    if len(states)>512:
+        input(plural(len(states),"state")+", will be slow")
     import pygame
     from pygame.locals import *
     initialisePygame(False)

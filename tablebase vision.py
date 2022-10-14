@@ -1,6 +1,7 @@
 import math, random, os
 imagePath=os.path.join(os.path.dirname(__file__),"Cburnett_pieces")
-from sympy.utilities.iterables import combinations, subsets
+from sympy.utilities.iterables import combinations as multiset_combinations
+from sympy.utilities.iterables import subsets
 try:
     from sympy.utilities.iterables import multiset_permutations  # generates permutations where some elements are identical, from https://stackoverflow.com/a/60252630
 except:
@@ -8,7 +9,7 @@ except:
         def visit(head):
             return(list(map(u.__getitem__,map(E.__getitem__,accumulate(range(N-1),lambda e,N: nxts[e],initial=head)))))
         u=list(set(items))
-        E=list(sorted(map(u.index,items)))
+        E=sorted(map(u.index,items))
         N=len(E)
         nxts=list(range(1,N))+[None]
         k=0
@@ -49,34 +50,231 @@ def lap(func,*iterables): #Python 3 was a mistake
     return list(map(func,*iterables))
 def minmax(iterable):
     return(min(iterable),max(iterable))
-
-mode=int(input("Would you like chess (0), cellular automata (1) or Shut the Box (2)? "))
-
-boardWidth=3
-boardSquares=boardWidth**2
-halfWidth=(boardWidth-1)//2
-mediumHalfWidth=boardWidth//2
-upperHalfWidth=(boardWidth+1)//2
-centre=(boardSquares-1)/2
-if boardWidth%2:
-    centre=int(centre)
+bitwise=False #turns out not to work on manifoldless INT (non-OT) rules above 3*3
+colourMode=False
 manifold=(0,0)
 pieceNames=["empty","king","queen","rook","bishop","knight","pawn","nightrider"]
 iterativePieces=[           2,      3,     4,                       7]
 elementaryIterativePieces=[         3,     4,                       7] #may be optimisable further for nightriders because kings can't move to squares that are only in check after being moved to with them
 pieceSymbols=[[" ","K","Q","R","B","N","P","M"],[" ","k","q","r","b","n","p","m"]] #nightriders are M because Wikipedia said to make them N and substitute knights for S (which is shallow and pedantic)
-axisLetters=[l[:boardWidth] for l in [["a","b","c","d","e","f","g","h"],["1","2","3","4","5","6","7","8"]]]
+def initialisePygame(chessGuiMode=False,interface=False,doNot=False):
+    global clock,colours,dims,size,screen,minSize,halfSize
+    if not doNot: #very suspicious
+        colours=[(236,217,185),(174,137,104),(255,255,255),(0,0,0),(255,0,0),(255,255,0),(0,255,0)] #using lichess's square colours but do not tell lichess
+        dims=3 #for state transition diagram
+        size=[1050]*dims
+        if chessGuiMode: #chessGuiMode van Russom
+            size=[i//boardWidth*boardWidth for i in size]
+        pygame.init()
+        clock=pygame.time.Clock()
+        screen=pygame.display.set_mode(size[:2],pygame.RESIZABLE)
+        minSize=min(size[:2])
+        halfSize=[s/2 for s in size]
+        global angleColour,averageColours,weightedAverageColours
+        def angleColour(angle):
+            return tuple((math.cos(angle-math.tau*i/3)+1)*255/2 for i in range(3))
+        def averageColours(*colours):
+            return tuple(math.sqrt(sum(c[i]**2 for c in colours)/len(colours)) for i in range(3)) #correct way, I think
+        def weightedAverageColours(*colours):
+            return tuple(math.sqrt(sum(c[1][i]**2*c[0] for c in colours)/sum(c[0] for c in colours)) for i in range(3))
+        colours.insert(2,averageColours(*colours[:2]))
+        for i in range(2):
+            colours.insert(i+3,averageColours(colours[i],colours[2]))
+        #five colours from light square to dark square, white, black, red, yellow, green
+        global drawShape,drawLine
+        def drawShape(size,pos,colour,shape): #rectangle, orthogonal/diagonal octagon, oblique octagon, square, diamond, circle (for king, queen, rook, bishop,knight respectively)
+            if shape==0:
+                pygame.draw.rect(screen,colour,pos+size)
+            elif shape<5:
+                pygame.draw.polygon(screen,colour,[[p+s/2*math.cos(((i+shape/2)/(2 if shape==4 else 4)+di/2)*math.pi) for di,(p,s) in enumerate(zip(pos,size))] for i in range(4 if shape==4 else 8)])
+            else:
+                pygame.draw.circle(screen,colour,pos,(size[0] if shape==5 else size)/2)
+        def drawLine(initial,destination,colour):
+            pygame.draw.line(screen,colour,initial,destination)
+    if interface:
+        global font,pygamePrint,button
+        font=None #I was going to use pygame.font.get_fonts()[0] instead of None, with the comment "#you will use the first font and you will be happy", but it was the Apple emoji UI one which doesn't support text
+        def pygamePrint(text,location,fontSize=16,centred=True,screenMargins=size[0]//8,colour=colours[5],button=False,backgroundColour=(48,)*3):
+            printFont=pygame.font.SysFont(font,size[1]//fontSize)
+            textWidth=printFont.size(text)
+            def centreLocation(location,textWidth,lines=0):
+                return(lap(int.__add__,location,(-textWidth//2,printFont.get_linesize()*lines)) if centred else location)
+            def minimumMargin(text):
+                return(min(location[0]-screenMargins,size[0]-screenMargins-1-location[0])-printFont.size(text)[0]/2 if centred else size[0]-location[0]-printFont.size(text)[0]) #you cannot bitwise NOT a float
+            def buttonBackground():
+                height=printFont.get_linesize()*n
+                if button:
+                    corner=(lap(int.__sub__,location,(maximumWidth//2,0*height//2*(n!=1))) if centred else location)
+                    drawShape([maximumWidth,height],corner,backgroundColour,0)
+                    buttonClicked=(clickDone and reduce(bool.__and__,(c<=m<c+l for m,c,l in zip(mousePos,corner,(maximumWidth,height)))))
+                else:
+                    buttonClicked=False
+                return((height,buttonClicked))
+            if minimumMargin(text)<0:
+                n=0
+                b=0
+                maximumWidth=0
+                lines=[]
+                while b<len(text):
+                    t=b
+                    while t<=len(text) and minimumMargin(text[b:t])>0:
+                        t+=1
+                    if t<len(text) and text[t]!=" "!=text[t-1] and " " in text[b+1:t]:
+                        t=b+1+t-text[t:b:-1].index(" ")
+                    maximumWidth=max(maximumWidth,printFont.size(text[b:t])[0])
+                    lines.append((text[b:t],centreLocation(location,printFont.size(text[b:t])[0],n)))
+                    b=t
+                    n+=1
+                (height,buttonClicked)=buttonBackground()
+                for t,l in lines:
+                    screen.blit(printFont.render(t,True,colour),l)
+            else:
+                maximumWidth=printFont.size(text)[0]
+                n=1
+                (height,buttonClicked)=buttonBackground()
+                screen.blit(printFont.render(text,True,colour),centreLocation(location,maximumWidth))
+            return(buttonClicked if button else height) #for chaining
+    else:
+        global cellColours,imageMode,pieceImages,renderPiece,renderBoard
+        maximum=(--0--boardWidth//faces*faces if mode==2 else boardSquares)
+        cellColours=tuple(angleColour(c*math.tau/maximum) for c in range(maximum))
+        imageMode=True
+        try:
+            pieceImages=[[pygame.image.load(os.path.join(imagePath,"Chess_"+i+("d" if j else "l")+"t45.svg")) for i in pieceSymbols[1][1:7]] for j in range(2)]
+        except:
+            imageMode=False
+        def renderPiece(pieceType,pieceColour,screenPosition,squareSize):
+            if imageMode:
+                screen.blit(pygame.transform.rotate(pygame.transform.scale(pieceImages[pieceColour][4 if pieceType==7 else pieceType-1],[squareSize]*2),180*(pieceType==7)),screenPosition) #Pygame uses degrees instead of radians (frankly ridiculous)
+            else:
+                colour=(0,255,0) if (interactive and i==selectedSquare and selectedness) else colours[5+pieceColour]
+                drawShape([squareSize*3/4]*2,[sp+(1/(8 if pieceType==3 else 2))*squareSize for sp in screenPosition],colour,(0 if pieceType==3 else pieceType))
+        def renderBoard(state,perceivedMoves,interactive,boardSize=minSize,renderPosition=(0,0)):
+            squareSize=boardSize//boardWidth
+            for i,s in enumerate(intState(state,True) if mode==1 and bitwise else state):
+                if interactive:
+                    m=[selectedSquare,i]
+                squarePosition=[i%boardWidth,((boardWidth-1)/2 if mode==2 else boardWidth+~i//boardWidth)] #I hate Pygame's coordinates so much
+                screenPosition=[r+s*squareSize for r,s in zip(renderPosition,squarePosition)]
+                drawShape([squareSize]*2,screenPosition,((((0,255,0) if isOptimal(stateTransitions[currentIndex][perceivedMoves.index(m)]) else (255,0,0)) if interactive and selectedness and m in perceivedMoves else colours[sum(squarePosition)%2]) if mode==0 else ((cellColours[i] if colourMode else (255,)*3) if s else (48,)*3)),0) #Golly colour
+                if mode==0:
+                    if s!=(0,0):
+                        if s[0]!=0:
+                            renderPiece(s[0],s[1],screenPosition,squareSize)
+            if interactive and clickDone and all(0<=m<boardSize for m in mousePos[:2]):
+                global clickedSquare
+                clickedSquare=sum(conditionalFlip(di,m//squareSize)*boardWidth**di for di,m in enumerate(mousePos[:2]))#mousePos[0]//squareSize+(boardWidth+~(mousePos[1]//squareSize))*boardWidth
+                #clickedSquare=compoundPositionReflect(clickedSquare,boardFlipping,True)
+
+    global mouse,doEvents
+    mouse=pygame.mouse
+    def doEvents():
+        global clickDone,mousePos,run
+        clickDone=False
+        mousePos=mouse.get_pos()
+        for event in pygame.event.get():
+            if event.type==pygame.QUIT:
+                run=False
+            if event.type==pygame.MOUSEBUTTONUP:
+                clickDone=True
+            if event.type==pygame.WINDOWRESIZED:
+                global size,minSize,halfSize
+                size[:2]=screen.get_rect().size
+                minSize=min(size[:2])
+                halfSize[:2]=[s/2 for s in size[:2]]
+        pygame.display.flip()
+        clock.tick(FPS)
+        screen.fill(colours[6])
+    global FPS
+    FPS=60
+
+guiMenuMode=True #not to be confused with guiMode, that is for the chess interface
+if guiMenuMode:
+    import pygame
+    from pygame.locals import *
+    initialisePygame(False,True)
+    run=True
+    while run:
+        doEvents()
+        pygamePrint("a program for generating and simulating state transition diagrams",(size[0]//2,size[1]//4+\
+        pygamePrint("tablebase vision",(size[0]//2,size[1]//4),16)),24) #nest offsets for word wrap to prevent overlap (requires it be done in reverse)
+        for i in range(4):
+            drawShape((minSize//16,)*2,(size[0]//4+minSize//16*((i&1)-1),size[1]*3//4+minSize//16*((i>>1)-1)),colours[i&1^i>>1],0)
+        pygamePrint("chess",(size[0]//4,size[1]*3//4+minSize//16),24)
+        for i in range(9):
+            drawShape((minSize//24,)*2,(size[0]//2+minSize//48*(2*(i%3)-3),size[1]*3//4+minSize//48*(2*(i//3)-3)),((255 if (i==1 or i>4) else 48),)*3,0)
+        pygamePrint("cellular automata",(size[0]//2,size[1]*3//4+minSize//16),24)
+        if clickDone:
+            mode=next((i for i in range(3) if size[0]*(4*(i+1)-1)//16<=mousePos[0]<size[0]*(4*(i+1)+1)//16 and size[1]*11//16<=mousePos[1]<size[1]*13//16),-1)
+            if mode!=-1:
+                break
+    else: exit()
+else:
+    mode=int(input("Would you like chess (0), cellular automata (1) or Shut the Box (2)? "))
+def setBoardWidth(n,new=False):
+    global boardWidth
+    if new or n!=boardWidth:
+        global boardSquares,halfWidth,mediumHalfWidth,upperHalfWidth,centre
+        boardWidth=n
+        boardSquares=boardWidth**2
+        halfWidth=(boardWidth-1)//2
+        mediumHalfWidth=boardWidth//2
+        upperHalfWidth=(boardWidth+1)//2
+        centre=(boardSquares-1)/2
+        if boardWidth%2:
+            centre=int(centre) #>mfw no int= operator
+        axisLetters=[l[:boardWidth] for l in [lap(chr,range(97,123)),lap(str,range(26))]]
+        if mode==1:
+            global demoState
+            demoState=abs(hash((boardWidth,)))
+            for i in range((--0--boardSquares.bit_length()//demoState.bit_length()).bit_length()+1):
+                demoState|=demoState<<demoState.bit_length()
+            demoState=intState(demoState)
+if mode==1:
+    def stateInt(state,mode=0):
+        return( sum((state&1<<s)>>(s-i)   for i,s in ((i,(((i//boardWidth+1)*(1 if OT else 3)*WIDTH+i%boardWidth+1)*(4 if OT else 3)+(WIDTH*3+1)*(not OT))) for i in range(boardSquares)))
+               if bitwise else
+                sum(s<<((i//boardWidth*WIDTH+i%boardWidth)*(4 if OT else 9) if mode else i) for i,s in enumerate(state))<<((1+WIDTH)*(4 if OT else 9)+(WIDTH*3+1)*(not OT) if mode else 0)) #for converting boolean list representation, 0 is 1 bit per cell, 1 is bitwise OT, 2 is bitwise INT (only 0 will ever be used, unless it turns out that the bitwise mode's performance improvements only take effect in recursive simulation)
+    def intState(integer,mode=False):
+        return( sum((integer&1<<i)<<(s-i) for i,s in ((i,(((i//boardWidth+1)*(1 if OT else 3)*WIDTH+i%boardWidth+1)*(4 if OT else 3)+(WIDTH*3+1)*(not OT))) for i in range(boardSquares)))
+               if bitwise and not mode else
+                [integer>>((((i//boardWidth+1)*WIDTH+i%boardWidth+1)*4 if OT else ((i//boardWidth+1)*3*WIDTH+i%boardWidth+1)*3+WIDTH*3+1) if mode else i)&1 for i in range(boardSquares)])
+symmetryReduction=True#(mode!=2 and input("Would you like reduction by "+("thirty-two" if manifold==(2,2) else "four" if (2,1)!=manifold!=(1,2) and manifold[0]!=manifold[1] else "eight")+"fold symmetry? (y/n)")=="y") #not mentioning vertex transitivity
+transitivityReduction=symmetryReduction #they will probably want it
+setBoardWidth(4,True) #input("Which board width would you like?")
+if guiMenuMode and mode<2:
+    initialisePygame(doNot=True)
+    if mode:
+        demoState=intState(hash((boardWidth,)))
+    while run:
+        doEvents()
+        run&=not(pygamePrint("Decide board width ("+str(boardWidth)+")",(size[0]//2,size[1]//8),16,button=True))
+        renderBoard((demoState if mode else [[False,False]]*boardSquares),[],False,minSize*3//4,(size[0]//2-minSize*3//8,size[1]//4))
+        sliderPosition=(size[0]//2-minSize*3//8+(boardWidth/16)*minSize*6//8,size[1]//4)
+        if pygame.mouse.get_pressed()[0]:
+            if math.dist(mousePos,sliderPosition)<=minSize//32:
+                dragging=True
+            if dragging:
+                setBoardWidth(max((1 if mode==1 else 3),min(--0--((mousePos[0]+minSize*3//8-size[0]//2)*16-minSize*3//8)//(minSize*6//8),16)))
+        else:
+            dragging=False
+        drawShape(minSize//16,sliderPosition,((7+dragging)*32-1,)*3,6)
+
 def parseMaterial(materialString): #I think in the endgame material notation, the piece letters are all capitalised but the v isn't
     return [(pieceSymbols[0].index(j.upper()),c) for c,i in enumerate(materialString.split("v")) for j in (i[1:] if i[0].upper()=="K" else i)]
 def plural(num,name,includeNum=True):
     return (str(num)+" ")*(includeNum)+name+("es" if name[-1]=="s" else "s")*(num!=1)
+def kingPositionCount(n,p):
+    return((n-2)*(n-1)*((n+3)*n+((n%2-2 if p else n%2*2) if symmetryReduction else -2))//((2 if p else 8) if symmetryReduction else 1)) #OEIS A357740, A357723, and A035286 respectively (I wonder who made the first two)
 if mode==0:
-    material=parseMaterial(input("Which endgame would you like? (ie. KRvK)"))
+    turnwise=True #turnwise symmetry reduction (disable if you are using state transition diagram and would like to preserve the property that moving across n edges ^s your turn with n, enable if you like efficiency (enabled by default because I like efficiency))
+    def reduceTurnwise(combinations): #because KPvKP can become both KNvK and KvKN
+        return {(c,(2 if sorted(c)==sorted(i) else 1 if i in combinations else 0)) for c,i in ((c,tuple((i,1-j) for (i,j) in c)) for c in combinations) if i not in combinations or sorted(c)<=sorted(i)} if turnwise else {(c,False) for c in combinations} #inelegant but this part doesn't run very much
     def generateCombinations(material):
         #if any((6,i) in material for i in range(2)):
         pawns=[material.count((6,i)) for i in range(2)]
         if pawns==[0,0]:
-            return {c for m in range(len(material)+1) for c in combinations(material,m)} #subsets(material)
+            return {c for m in range(len(material)+1) for c in multiset_combinations(material,m)} #subsets(material)
         else:
             promotionses=[[],[]] #we wants it
             for o,p in enumerate(pawns):
@@ -97,12 +295,50 @@ if mode==0:
             print(promotionses)
             promotionseses=([i+j for i in promotionses[0] for j in promotionses[1]] if promotionses[1] else promotionses[0]) if promotionses[0] else promotionses[1] #we needs it
             print(promotionseses)
-            return {c for p in [[next(i) if m[0]==6 else m for m in material] for i in map(iter,promotionseses)] for m in range(len(material)+1) for c in combinations(p,m)}
-    turnwise=True #turnwise symmetry reduction (disable if you are using state transition diagram and would like to preserve the property that moving across n edges ^s your turn with n, enable if you like efficiency (enabled by default because I like efficiency))
-    def reduceTurnwise(combinations): #because KPvKP can become both KNvK and KvKN
-        return {(c,(2 if sorted(c)==sorted(i) else 1 if i in combinations else 0)) for c,i in ((c,tuple((i,1-j) for (i,j) in c)) for c in combinations) if i not in combinations or sorted(c)<=sorted(i)} if turnwise else {(c,False) for c in combinations} #inelegant but this part doesn't run very much
-    combinations=reduceTurnwise(generateCombinations(material))
-    print(plural(len(combinations),"combination")+":",combinations) #first element is combination's piece contents, second is whether it is unique to a single side
+            return {c for p in [[next(i) if m[0]==6 else m for m in material] for i in map(iter,promotionseses)] for m in range(len(material)+1) for c in multiset_combinations(p,m)}
+    def factorial(n): #this is a Gaussian program (god save the Γ(n)=n!)
+        return((reduce(int.__mul__,range(1,n+1)) if n else 1) if type(n)==int else sum((t/16)**n*math.e**(-t/16)/16 for t in range(65536))) #1/16≈0, 4096≈∞ (very suspicious)
+    def findApproximatePositions(combinations):
+        return(sum(kingPositionCount(boardWidth,any(o[0]==6 for o in c))*factorial(boardSquares-2)//factorial(boardSquares-2-len(c))//reduce(int.__mul__,(factorial(c.count((k,j))) for k in range(len(pieceSymbols)) for j in range(2)))*(1+(i!=2)) for c,i in combinations)) #the factorial(boardSquares-2) could be moved out of the iterator but then it wouldn't remain integer
+    if guiMenuMode:
+        demoState=[(0,False)]*boardSquares
+        demoState[boardWidth//2]=(1,False)
+        demoState[boardSquares-boardWidth//2]=(1,True) #-boardWidth+floordiv(boardWidth,2)=-ceilingdiv(boardWidth,2)
+        material=[]
+        combinations=reduceTurnwise(generateCombinations(material))
+        approximatePositions=findApproximatePositions(combinations)
+        typeSelected=(0,False)
+        run=True
+        while run:
+            doEvents()
+            run&=not(pygamePrint("Place pieces ("+str(approximatePositions)+" positions)",(size[0]//2,size[1]//8),16,button=True))
+            renderSize=minSize*3//4*boardWidth//(boardWidth+2)
+            for j in range(2):
+                drawShape((renderSize//boardWidth*(len(pieceSymbols[0])-(boardWidth<5)-2),renderSize//boardWidth),((size[0]//2-renderSize//2)*(size[1]*5//4>=size[0]),size[1]-renderSize*((boardWidth+1)*j+1)//boardWidth),(48,)*3,0)
+                if typeSelected[0] and typeSelected[1]==j:
+                    drawShape((renderSize//boardWidth,)*2,((size[0]//2-renderSize//2)*(size[1]*5//4>=size[0])+renderSize//boardWidth*(typeSelected[0]-2),size[1]-renderSize//boardWidth*((boardWidth+1)*j+1)),(0,255,0),0)
+                for i in range(2,len(pieceSymbols[0])-(boardWidth<5)): #nightrider only becomes effectually different from knight on 5*5 board
+                    renderPiece(i,j,((size[0]//2-renderSize//2)*(size[1]*5//4>=size[0])+renderSize//boardWidth*(i-2),size[1]-renderSize//boardWidth*((boardWidth+1)*j+1)),renderSize//boardWidth)
+            renderBoard(demoState,[],False,renderSize,((size[0]//2-renderSize//2)*(size[1]*5//4>=size[0]),size[1]-renderSize*(boardWidth+1)//boardWidth))
+            if clickDone:
+                boardPos=((mousePos[0]+(renderSize//2-size[0]//2)*(size[1]*5//4>=size[0]))//(renderSize//boardWidth),boardWidth-(mousePos[1]+renderSize//boardWidth*(boardWidth+2)-size[1])//(renderSize//boardWidth))
+                if 0<=boardPos[0]<boardWidth and 0<=boardPos[1]<boardWidth:
+                    if typeSelected[0]:
+                        material.append(typeSelected)
+                    if demoState[boardPos[0]+boardWidth*boardPos[1]][0]:
+                        del material[material.index(demoState[boardPos[0]+boardWidth*boardPos[1]])]
+                    combinations=reduceTurnwise(generateCombinations(material))
+                    approximatePositions=findApproximatePositions(combinations)
+                    demoState[boardPos[0]+boardWidth*boardPos[1]]=typeSelected
+                elif 0<=boardPos[0]<len(pieceSymbols[0])-2-(boardWidth<5) and not -1!=boardPos[1]!=boardWidth:
+                    typeSelected=(boardPos[0]+2,boardPos[1]>-1)
+                else:
+                    typeSelected=(0,False)
+    else:
+        material=parseMaterial(input("Which endgame would you like? (ie. KRvK)"))
+        combinations=reduceTurnwise(generateCombinations(material))
+        approximatePositions=findApproximatePositions(combinations)
+    print(plural(len(combinations),"combination")+": "+str(combinations)+", at most "+plural(approximatePositions,"position")) #first element is combination's piece contents, second is whether it is unique to a single side
 
 def generatePermutations(material,squares):
     return multiset_permutations(material+((0,0),)*squares)
@@ -358,8 +594,6 @@ def scroll(state,x,y): #to be optimised
            if manifold[1]!=0 else
             state) #equivalent to axialScroll(axialScroll(state,False,x),True,y) (but ignores scrolls in bounded axes)
 
-symmetryReduction=(mode!=2 and input("Would you like reduction by "+("thirty-two" if manifold==(2,2) else "four" if (2,1)!=manifold!=(1,2) and manifold[0]!=manifold[1] else "eight")+"fold symmetry? (y/n)")=="y") #not mentioning vertex transitivity
-transitivityReduction=symmetryReduction #they will probably want it
 combinationIndices=[0]
 combinationTurnwises=[]
 states=[] #list of all legal states (permutations of pieces) as lists of piece types and colours (0 if no piece)
@@ -382,7 +616,7 @@ if mode==0:
     def generateKingPositions(pawns):
         whiteKingRange=(0,) if manifold==(1,1) and transitivityReduction else (leftHalf if pawns else [x+y*boardWidth for x in range(upperHalfWidth) for y in range(x+1 if manifold[0]==manifold[1] else upperHalfWidth)]) if symmetryReduction else range(boardSquares)
         #print("permutation lengths (should be "+str(boardSquares)+"):",map(len,piecePermutations))
-        kingPositions=[(i,j) for i,iKingMoves in zip(whiteKingRange,[findPieceMoves(((0,0),)*boardSquares,i,(1,0)) for i in whiteKingRange]) for j in ((x+y*boardWidth for x in range(1,mediumHalfWidth+1) for y in range(x+1)) if manifold==(1,1) and transitivityReduction else ((whiteKingRange if i==centre else leftHalf if i%boardWidth==(boardWidth-1)/2 else diagonalHalf if i%boardWidth==i//boardWidth and pawns==0 else range(boardSquares)) if symmetryReduction else range(boardSquares))) if not (i==j or j in iKingMoves)]
+        kingPositions=[(i,j) for i,iKingMoves in zip(whiteKingRange,[findPieceMoves(((0,0),)*boardSquares,i,(1,0)) for i in whiteKingRange]) for j in ((x+y*boardWidth for x in range(1,mediumHalfWidth+1) for y in range(x+1)) if manifold==(1,1) and transitivityReduction else ((whiteKingRange if i==centre else leftHalf if i%boardWidth==(boardWidth-1)/2 else diagonalHalf if i%boardWidth==i//boardWidth and not pawns else range(boardSquares)) if symmetryReduction else range(boardSquares))) if not (i==j or j in iKingMoves)]
         kingStates=[tuple((int(k==i or k==j),int(k==j)) for k in range(boardSquares)) for i,j in kingPositions] #each square in each state list (in the list of them) is a list of the piece and its colour
         kingLineOfSymmetry=[2 if i%boardWidth==i//boardWidth and j%boardWidth==j//boardWidth and manifold[0]==manifold[1] and not pawns else (0 if (j%boardWidth==0 or boardWidth%2==0 and j%boardWidth==mediumHalfWidth if manifold[0]==1 and manifold[1]!=2 else i%boardWidth==j%boardWidth==halfWidth) else 1 if (j//boardWidth==0 or boardWidth%2==0 and j//boardWidth==mediumHalfWidth if manifold[1]==1 and manifold[0]!=2 else i//boardWidth==j//boardWidth==halfWidth) and not pawns else -1) if boardWidth%2==1 else -1 for i,j in kingPositions] #-1 for no symmetry, 0 for x, 1 for y, 2 for diagonal
         return (kingPositions,kingStates,kingLineOfSymmetry)
@@ -750,14 +984,6 @@ elif mode==1:
         else:
             return([])#[tuple(i>>n&1 for n in range(boardSquares)) for i in range(2**boardSquares)])
 
-    def stateInt(state,mode=0):
-        return( sum((state&1<<s)>>(s-i)   for i,s in ((i,(((i//boardWidth+1)*(1 if OT else 3)*WIDTH+i%boardWidth+1)*(4 if OT else 3)+(WIDTH*3+1)*(not OT))) for i in range(boardSquares)))
-               if bitwise else
-                sum(s<<((i//boardWidth*WIDTH+i%boardWidth)*(4 if OT else 9) if mode else i) for i,s in enumerate(state))<<((1+WIDTH)*(4 if OT else 9)+(WIDTH*3+1)*(not OT) if mode else 0)) #for converting boolean list representation, 0 is 1 bit per cell, 1 is bitwise OT, 2 is bitwise INT (only 0 will ever be used, unless it turns out that the bitwise mode's performance improvements only take effect in recursive simulation)
-    def intState(integer,mode=False):
-        return( sum((integer&1<<i)<<(s-i) for i,s in ((i,(((i//boardWidth+1)*(1 if OT else 3)*WIDTH+i%boardWidth+1)*(4 if OT else 3)+(WIDTH*3+1)*(not OT))) for i in range(boardSquares)))
-               if bitwise and not mode else
-                [integer>>(((i//boardWidth+1)*WIDTH+i%boardWidth+1)*4 if OT else ((i//boardWidth+1)*3*WIDTH+i%boardWidth+1)*3+WIDTH*3+1)&1 for i in range(boardSquares)])
     transitions=tuple(a+t for a in ("b","s") for t in ("0c","1c","2c","3c","2n","4c","1e","2a","2k","3n","3i","4n","3q","3y","4y","5e","2e","3a","3j","4a","4w","5a","3k","4q","4k","5j","5k","6e","3e","4r","4j","5n","5i","6a","5q","5y","6k","7e","2i","3r","4i","4t","5r","4z","6i","4e","5c","6c","7c","6n","8c"))
     totalTransitions=[{"c"}, #using c for 0 and 8 because otherwise no distinction from empty set
                       {"c","e"},
@@ -964,8 +1190,8 @@ else:
     diceProbabilities=list(accumulate(range(--0--flaps//faces-1),addDice,initial=[1]*faces))
     diceProbabilityDenominators=[faces**i for i in range(1,--0--flaps//faces+1)]
     def subsetSums(Set):
-        #return map(sum,combinations(Set))
-        return([(sum(1<<(i-1) for i in c),sum(c)) for c in (c for r in range(len(Set)+1) for c in combinations(Set,r))])
+        #return(map(sum,multiset_combinations(Set)))
+        return([(sum(1<<(i-1) for i in c),sum(c)) for c in (c for r in range(len(Set)+1) for c in multiset_combinations(Set,r))])
     #print([(s,list(zip(d,(list(zip(mi,ti)) for mi,ti in zip(m,t))))) for s,d,m,t in zip(states,stateDice,stateMoves,stateTransitions)])
     #print(diceProbabilities)
     #print(stateTransitions)
@@ -983,7 +1209,7 @@ if mode==0 or symmetryReduction: #not necessary when no symmetry reduction in ce
 
 if mode==0:
     def applyMoveToBoard(state,move,invert=True):
-        return boardReflect(tuple(((move[2] if len(move)==3 else state[move[0]][0]),(state[move[0]][1]^invert)) if k==move[1] else (0,0) if k==move[0] or r[0]==0 else (r[0],r[1]^invert) for k,r in enumerate(state)),(1 if anyPawns and any(q[0]==6 for q in state) else -1)) #board flipped such that pawns of turn to move are always upwards
+        return boardReflect(tuple(((move[2] if len(move)==3 else state[move[0]][0]),(state[move[0]][1]^invert)) if k==move[1] else (0,0) if k==move[0] else (r[0],r[0] and r[1]^invert) for k,r in enumerate(state)),(1 if anyPawns and any(q[0]==6 for q in state) else -1)) #board flipped such that pawns of turn to move are always upwards
     def dictInput(s,m):
         #printBoard(symmetry(applyMoveToBoard(s,m)))
         return symmetry(applyMoveToBoard(s,m)) if turnwise else (not s[0],symmetry(applyMoveToBoard(s[1],m)))
@@ -1015,23 +1241,23 @@ print("state parents done,",stateParents.count([]),"orphans") #orphans guarantee
 
 if mode==0:
     def printWinningnesses(): #could be done inline in the regression loop also to be slightly more efficient (though its performance impact is negligible) and to make it tell you as it finds them instead of at the end (which could take hours for large tablebases)
-        def indent(length,num):
-            return(" "*(length+1-len(str(num)))+str(num))
-        def indentPlural(length,num,name,are=False,returnLength=0):
-            hypotheticalString=(("is" if num==1 else "are")+" ")*are+plural(num,name)
-            return(len(hypotheticalString)-len(plural(num,name,includeNum=False)) if returnLength==2 else len(hypotheticalString) if returnLength else (("is" if num==1 else "are"))*are+(returnLength==0)*(length+(num!=1)-len(hypotheticalString))*" "+plural(num,name)+" "*(num==1))
-        if maximumDTM==0:
-            print("you cannot stalemate nor checkmate in any states, you are destined to shuffle pieces about forever")
-        else:
-            '''for i in range(len(states)):
-                d=[stateWinningnesses.count((w,i)) for w in (range(2) if i%2 else range(0,-2,-1))]
-                if d==[0]*2:
-                    break
-                else:'''
-            margins=(max(indentPlural(0,d[0],"stalemate",are=True,returnLength=1) for d in DTMs+[(infinities,0)]),max(indentPlural(0,d[1],"win" if i%2 else "loss",returnLength=2) for i,d in enumerate(DTMs) if d[1]),max(len(plural(d,"win" if i%2 else "loss",includeNum=False)) for i,d in enumerate(DTMs) if d[1]),len(str(maximumDTM)))
-            for i,d in enumerate(DTMs):
-                print("there "+indentPlural(margins[0],d[0],"stalemate",are=True)+(" and "+indent(margins[1]+margins[2]-1,str(d[1])+indent(margins[2],plural(d[1],"win" if i%2 else "loss",includeNum=False))))*bool(d[1])+" in"+indent(margins[3],i)) #in terms of ply
-            print("there "+indentPlural(margins[0],infinities,"stalemate",are=True)+" in ∞")
+            def indent(length,num):
+                return(" "*(length+1-len(str(num)))+str(num))
+            def indentPlural(length,num,name,are=False,returnLength=0):
+                hypotheticalString=(("is" if num==1 else "are")+" ")*are+plural(num,name)
+                return(len(hypotheticalString)-len(plural(num,name,includeNum=False)) if returnLength==2 else len(hypotheticalString) if returnLength else (("is" if num==1 else "are"))*are+(returnLength==0)*(length+(num!=1)-len(hypotheticalString))*" "+plural(num,name)+" "*(num==1))
+            if maximumDTM==0:
+                print("you cannot stalemate nor checkmate in any states, you are destined to shuffle pieces about forever")
+            else:
+                '''for i in range(len(states)):
+                    d=[stateWinningnesses.count((w,i)) for w in (range(2) if i%2 else range(0,-2,-1))]
+                    if d==[0]*2:
+                        break
+                    else:'''
+                margins=(max(indentPlural(0,d[0],"stalemate",are=True,returnLength=1) for d in DTMs+[(infinities,0)]),max(indentPlural(0,d[1],"win" if i%2 else "loss",returnLength=2) for i,d in enumerate(DTMs) if d[1]),max(len(plural(d,"win" if i%2 else "loss",includeNum=False)) for i,d in enumerate(DTMs) if d[1]),len(str(maximumDTM)))
+                for i,d in enumerate(DTMs):
+                    print("there "+indentPlural(margins[0],d[0],"stalemate",are=True)+(" and "+indent(margins[1]+margins[2]-1,str(d[1])+indent(margins[2],plural(d[1],"win" if i%2 else "loss",includeNum=False))))*bool(d[1])+" in"+indent(margins[3],i)) #in terms of ply
+                print("there "+indentPlural(margins[0],infinities,"stalemate",are=True)+" in ∞")
     stateWinningnesses=[(-c,0) if t==() else (0,None) for t,c in zip(stateTransitions,stateChecks)] #0 if drawing, 1 if winning, -1 if losing (like engine evaluations but only polarity (and relative to side to move like Syzygy, not absolute like engines), not magnitude (due to infinite intelligence))
     winningRegressionCandidates=[i for i,w in enumerate(stateWinningnesses) if w[1]!=None]
     #it assumes each position is drawing until it learns otherwise (because infinite loops with insufficient material to forcibly stalemate (and be marked as such by the regression) are draws)
@@ -1062,7 +1288,34 @@ if mode==0:
             DTMs.append(newDTMs)
     infinities=stateWinningnesses.count((0,None))
     maximumDTM=len(DTMs)-1
-    printWinningnesses()
+    if guiMenuMode:
+        maxima=(max(d[0] for d in DTMs+[(infinities,0)]),max(d[1] for d in DTMs),max(len(plural(d,"win" if i%2 else "loss",includeNum=False)) for i,d in enumerate(DTMs) if d[1]))
+        run=True
+        rememberedPerceived=perceivedToMove=False
+        actualDemoState=demoState
+        demoWinningness=stateWinningnesses[stateDict[symmetry(actualDemoState)]]
+        while run:
+            doEvents()
+            run&=not(pygamePrint(plural(len(states),"state"),(size[0]//2,size[1]//8),16,button=True))
+            perceivedToMove^=pygamePrint(("black" if perceivedToMove else "white")+" to move",(size[0]//4,size[1]//8),16,button=True)
+            if perceivedToMove!=rememberedPerceived:
+                actualDemoState=[(t,(c^(t and perceivedToMove))) for t,c in demoState]
+                demoWinningness=stateWinningnesses[stateDict[symmetry(actualDemoState)]]
+                rememberedPerceived=perceivedToMove
+            for i,d in enumerate(DTMs):
+                drawShape((size[0]*d[0]/maxima[0]//4,size[1]//len(DTMs)),(size[0]*(3-d[0]/maxima[0])//4,size[1]//len(DTMs)*i),colours[5 if demoWinningness==(0,i) else 2],0)
+                drawShape((size[1]*d[1]/maxima[1]//4,size[1]//len(DTMs)),(size[0]*3//4,size[1]//len(DTMs)*i),colours[5 if demoWinningness==((-1)**(i+1),i) else 1-i%2],0)
+            renderBoard(demoState,[],False,renderSize,((size[0]//2-renderSize//2)*(size[1]*5//4>=size[0]),size[1]-renderSize*(boardWidth+1)//boardWidth))
+        run=True
+        while run:
+            doEvents()
+            pygamePrint("What is your choice, son of Man",(size[0]//2,size[1]//8),16,colour=(0,)*3,button=True)
+            decision=(pygamePrint("play chess with God",(size[0]//4,size[1]//2),16,button=True)<<1|pygamePrint("view state transition diagram",(size[0]//4*3,size[1]//2),16,button=True))
+            run=not(decision)
+        decision-=1
+        print(decision)
+    else:
+        printWinningnesses()
 elif mode==1:
     def displacements(oscillator): #intakes list of oscillator's states
         if bitwise:
@@ -1183,104 +1436,6 @@ else:
     print(cycles)
     print(stateWinningnesses[-1])
 
-def initialisePygame(guiMode):
-    global clock
-    clock=pygame.time.Clock()
-    pygame.init()
-    global black
-    black=(0,0,0)
-    global colours
-    colours=[(236,217,185),(174,137,104),(255,255,255),(0,0,0),(255,0,0),(255,255,0),(0,255,0)] #using lichess's square colours but do not tell lichess
-    global angleColour
-    def angleColour(angle):
-        return tuple((math.cos(angle-math.tau*i/3)+1)*255/2 for i in range(3))
-    global averageColours
-    def averageColours(*colours):
-        return tuple(math.sqrt(sum(c[i]**2 for c in colours)/len(colours)) for i in range(3)) #correct way, I think
-    global weightedAverageColours
-    def weightedAverageColours(*colours):
-        return tuple(math.sqrt(sum(c[1][i]**2*c[0] for c in colours)/sum(c[0] for c in colours)) for i in range(3))
-    colours.insert(2,averageColours(*colours[:2]))
-    for i in range(2):
-        colours.insert(i+3,averageColours(colours[i],colours[2]))
-    #light, dark, white, black, red, yellow, green
-    global dims
-    dims=3
-    global size
-    size=[1050]*dims
-    if guiMode: #guiMode van Russom
-        size=[i//boardWidth*boardWidth for i in size]
-    global imageMode
-    imageMode=True
-    global pieceImages
-    try:
-        pieceImages=[[pygame.image.load(os.path.join(imagePath,"Chess_"+i+("d" if j else "l")+"t45.svg")) for i in pieceSymbols[1][1:6]] for j in range(2)]
-    except:
-        imageMode=False
-    global minSize
-    minSize=min(size[:2])
-    global halfSize
-    halfSize=[s/2 for s in size]
-    global screen
-    screen=pygame.display.set_mode(size[:2],pygame.RESIZABLE)
-    global drawShape
-    def drawShape(size,pos,colour,shape):
-        if shape==0:
-            pygame.draw.rect(screen,colour,pos+size)
-        elif shape<5:
-            pygame.draw.polygon(screen,colour,[[p+s/2*math.cos(((i+shape/2)/(2 if shape==4 else 4)+di/2)*math.pi) for di,(p,s) in enumerate(zip(pos,size))] for i in range(4 if shape==4 else 8)])
-        else:
-            pygame.draw.circle(screen,colour,pos,(size[0] if shape==5 else size)/2)
-    global drawLine
-    def drawLine(initial,destination,colour):
-        pygame.draw.line(screen,colour,initial,destination)
-    global cellColours
-    maximum=(--0--boardWidth//faces*faces if mode==2 else boardSquares)
-    cellColours=tuple(angleColour(c*math.tau/maximum) for c in range(maximum))
-    global renderBoard
-    def renderBoard(state,perceivedMoves,interactive,boardSize=minSize,renderPosition=(0,0)):
-        squareSize=boardSize//boardWidth
-        for i,s in enumerate(intState(state,True) if mode==1 and bitwise else state):
-            if interactive:
-                m=[selectedSquare,i]
-            squarePosition=[i%boardWidth,((boardWidth-1)/2 if mode==2 else boardWidth+~i//boardWidth)] #I hate Pygame's coordinates so much
-            screenPosition=[r+s*squareSize for r,s in zip(renderPosition,squarePosition)]
-            drawShape([squareSize]*2,screenPosition,((((0,255,0) if isOptimal(stateTransitions[currentIndex][perceivedMoves.index(m)]) else (255,0,0)) if interactive and selectedness and m in perceivedMoves else colours[sum(squarePosition)%2]) if mode==0 else ((cellColours[i] if colourMode else (255,255,255)) if s else (48,48,48))),0) #Golly colour
-            if mode==0:
-                if s!=(0,0):
-                    colour=(0,255,0) if (interactive and i==selectedSquare and selectedness) else colours[5+s[1]]
-                    if s[0]!=0:
-                        if imageMode and s[0]<7:
-                            screen.blit(pygame.transform.scale(pieceImages[s[1]][s[0]-1],[squareSize]*2),screenPosition)
-                        else:
-                            drawShape([squareSize*3/4]*2,[sp+(1/(8 if s[0]==3 else 2))*squareSize for sp in screenPosition],colour,(0 if s[0]==3 else s[0]))
-        if interactive and clickDone and all(0<=m<boardSize for m in mousePos[:2]):
-            global clickedSquare
-            clickedSquare=sum(conditionalFlip(di,m//squareSize)*boardWidth**di for di,m in enumerate(mousePos[:2]))#mousePos[0]//squareSize+(boardWidth+~(mousePos[1]//squareSize))*boardWidth
-            #clickedSquare=compoundPositionReflect(clickedSquare,boardFlipping,True)
-
-    global mouse
-    mouse=pygame.mouse
-    global doEvents
-    def doEvents():
-        global clickDone
-        global run
-        clickDone=False
-        for event in pygame.event.get():
-            if event.type==pygame.QUIT:
-                run=False
-            if event.type==pygame.MOUSEBUTTONUP:
-                clickDone=1
-            if event.type==pygame.WINDOWRESIZED:
-                size[:2]=screen.get_rect().size
-                minSize=min(size[:2])
-                halfSize[:2]=[s/2 for s in size[:2]]
-        pygame.display.flip()
-        clock.tick(FPS)
-        screen.fill(black)
-    global FPS
-    FPS=60
-
 def compoundFlipping(a,b,reverses=[False]*2): #applies flipping a then b to [0,0,0], returns resultant flipping tuple
     bee=a[2]^(b[2] and reverses[1]) #bee
     aee=a[2] and reverses[0] #the sound when I see a bee
@@ -1291,7 +1446,7 @@ def compoundFlipping(a,b,reverses=[False]*2): #applies flipping a then b to [0,0
             [a[a[2]]^b[a[2]^b[2]],a[not a[2]]^b[not a[2]^b[2]],a[2]^b[2]])''' #found by manually enumerating the 64 compound eightfold flippings in each case (you can trust that it is as right as my brain (slightly more credible than my programming))
     #return [a[0]^b[a[2]],a[1]^b[not a[2]],a[2]^b[2]] #if you do not want reverses
 
-if (mode==0 or mode==2) and input("Would you like to play "+("chess" if mode==0 else "Shut the Box")+" with God (y) or see the state transition diagram (n)? ")=="y":
+if (mode==0 or mode==2) and (decision if guiMenuMode else input("Would you like to play "+("chess" if mode==0 else "Shut the Box")+" with God (y) or see the state transition diagram (n)? ")=="y"):
     run=True
     if mode==0:
         def whereIs(square):
@@ -1326,7 +1481,7 @@ if (mode==0 or mode==2) and input("Would you like to play "+("chess" if mode==0 
             #print(stateWinningnesses[i],stateWinningnesses[currentIndex])
             #print(stateWinningnesses[i],(-stateWinningnesses[currentIndex][0],stateWinningnesses[currentIndex][1]-1))
             return stateWinningnesses[i][0]==0 if stateWinningnesses[currentIndex][1]==None else stateWinningnesses[i]==(-stateWinningnesses[currentIndex][0],stateWinningnesses[currentIndex][1]-1)
-        guiMode=(input("Would you like a GUI? (y/n)")=="y")
+        guiMode=(guiMenuMode or input("Would you like a GUI? (y/n)")=="y")
         if guiMode:
             import pygame
             from pygame.locals import *
@@ -1335,13 +1490,13 @@ if (mode==0 or mode==2) and input("Would you like to play "+("chess" if mode==0 
             clickedSquare=-1
             selectedness=False
         while run:
-            if maximumDTM:
+            if maximumDTM and longestMode>=0:
                 longestMode=(input("Would you like to play the longest checkmate sequence (l), a random one (r) or stop being pestered (s)?"))
                 longests=tuple(i for i,w in enumerate(stateWinningnesses) if w==((-1)**(maximumDTM+1),maximumDTM))
                 longestMode=(1 if longestMode=="l" else -1 if longestMode=="s" else 0)
             else:
                 longestMode=-1
-            currentIndex=(random.choice(longests) if longestMode else random.randrange(len(states)))
+            currentIndex=(random.choice(longests) if longestMode>0 else random.randrange(len(states)))
             boardFlipping=[0]*3
             humanColour=0 if turnwise else stateTurns[currentIndex] #it includes a u because this is a British program (property of her majesty)
             turn=True
@@ -1363,9 +1518,6 @@ if (mode==0 or mode==2) and input("Would you like to play "+("chess" if mode==0 
                         moveDone=False
                         while run and not moveDone:
                             doEvents()
-                            if clickDone:
-                                mousePos=mouse.get_pos()
-                                #print([di/squareSize for di in mousePos])
                             renderBoard(perceivedState,apparentMoves,True)
                             if clickedSquare!=-1:
                                 print(clickedSquare)
@@ -1429,7 +1581,7 @@ else:
         input(plural(stateCount,"state")+", will be slow")
     import pygame
     from pygame.locals import *
-    initialisePygame(False)
+    initialisePygame()
     rad=halfSize[0]/stateCount
     #bitColours=[[int(255*(math.cos((j/n-i/3)*2*math.pi)+1)/2) for i in range(3)] for j in range(n)]
     nodes=[[[[i*rad]+halfSize[1:],[0]+[random.random()/2**8 for di in range(dims-1)]],(rad,)*2, 1, ((colours[2 if t==Tralse else 3 if t==Fruse else 4 if t==Trulse else t],
@@ -1442,7 +1594,6 @@ else:
         return [sum(i[0][0][di] for i in nodes)/len(nodes)-si for di,si in enumerate(halfSize)]
     cameraPosition=[averageNode(),[0.0]*3] #must be 0.0, not 0 (to be float for the lap(float.__add__))
     cameraAngle=[[1/3,-1/6,math.sqrt(3)/2,-1/3],[0]*3] #these values make it point towards the diagram (there are probably ones that aren't askew but I like it (it has soul))
-    clickDone=0
     boardLastPrinted=0
     drag=0.1
     gravitationalConstant=-(size[0]/10)*(64/len(nodes))**2
@@ -1543,7 +1694,6 @@ else:
     gain=1
     angularVelocityConversionFactor=math.tau/FPS
     perspectiveMode=(True and dims==3)
-    colourMode=False
     physicsMode=True
     halfConnectionMode=False
     bidirectionalMode=False
@@ -1606,8 +1756,6 @@ else:
                         drawLine(sc[:2],(average(sc[:2],nodeScreenPositions[m][:2]) if halfConnectionMode else nodeScreenPositions[m][:2]),(cellColours[diceNumbers[stateDice[i]][j]-1] if colourMode==1 else n[3][colourMode]))
             else:
                 drawLine(sc[:2],(average(sc[:2],nodeScreenPositions[k][:2]) if halfConnectionMode else nodeScreenPositions[k][:2]),n[3][colourMode])
-        if clickDone:
-            mousePos=mouse.get_pos()
         for i,j,n,s in [(i,nodeScreenPositions[i],nodes[i],theStates(i)) for i in renderOrder]:
             sezi=2*((j[2] if projectionMode==3 else n[1][0]*minSize/j[2]) if dims==3 and perspectiveMode else n[1][0]) #different from size
             if inPlaceBoards and (sezi>minSize*boardSquares/4096 or not perspectiveMode): #they will not notice if it is smaller, I hope

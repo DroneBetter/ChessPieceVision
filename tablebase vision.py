@@ -143,7 +143,7 @@ def initialisePygame(chessGuiMode=False,interface=False,doNot=False):
             pieceImages=[[pygame.image.load(os.path.join(imagePath,"Chess_"+i+("d" if j else "l")+"t45.svg")) for i in pieceSymbols[1][1:7]] for j in range(2)]
         except:
             imageMode=False
-        def renderPiece(pieceType,pieceColour,screenPosition,squareSize):
+        def renderPiece(pieceType,pieceColour,screenPosition,squareSize,interactive=False):
             if imageMode:
                 screen.blit(pygame.transform.rotate(pygame.transform.scale(pieceImages[pieceColour][4 if pieceType==7 else pieceType-1],[squareSize]*2),180*(pieceType==7)),screenPosition) #Pygame uses degrees instead of radians (frankly ridiculous)
             else:

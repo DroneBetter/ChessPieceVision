@@ -4,47 +4,33 @@ from functools import reduce
 redumulate=(lambda f,i,init=None: accumulate(i,f,initial=init))'''
 class reducer:
     conditionalReverse=(lambda self,reversal,toBe: reversed(toBe) if reversal else toBe)
-    conditionalFlip=(lambda self,flip,toBe,transitive=False: ((0 if toBe==0 else boardWidth-toBe) if transitive else boardWidth+~toBe) if flip else toBe) #torus is only vertex-transitive manifold
     conditionalTranspose=(lambda self,transpose,x,y: x*boardWidth+y if transpose else y*boardWidth+x) #to prevent having to reiterate in each instance or use the less efficient x*boardWidth**(transpose)+y*boardWidth**(1^transpose) (to avoid having to allocate x and y to variables or recompute them)
     ORsum=(lambda self,l: reduce(int.__or__,l,0))
-    RLE=(lambda self,board,includeRule=False: ("x ="+str(boardWidth)+", y = "+str(boardWidth)+", rule = "+rulestring.upper().replace("S","/S")+"\n" if includeRule else "")+"$".join("".join(l*2 if self.niemiec and q==2 else l if q==1 else str(q)+l for l,q in [(("o"if l else "b"),len(list(q))) for l,q in groupby(board[b*boardWidth:(b+1)*boardWidth])]) for b in range(boardWidth-1,-1,-1))+"!")
+    boardStr=(lambda self,board,inner=True,b='b',o='o',j='\n': j.join((lambda i: "".join(o if i>>self.cellWidth*j&1 else b for j in range(inner,i.bit_length()//self.cellWidth+2-inner)))(board>>(self.cellWidth*self.WIDTH*i if self.OT or self.byteINT else 3*self.WIDTH*(i*3+1)+1)&(1<<self.cellWidth*self.WIDTH)-1) for i in range(inner,self.WIDTH-inner)))
+    RLE=(lambda self,board,inner=True,includeRule=False: ("x ="+str(boardWidth)+", y = "+str(boardHeight)+", rule = "+RLErulestring+'\n' if includeRule else '')+''.join((lambda l,q: l*2 if self.niemiec and q==2 else l if q==1 else str(q)+l)(l,len(list(q))) for l,q in groupby(self.boardStr(board,inner,'b','o','$') if self.bitwise else '$'.join(''.join('o' if l else 'b' for l in board[b*boardWidth:(b+1)*boardWidth]) for b in range(boardWidth-1,-1,-1))))+'!')
     def print(self,board,chequerboard=False,delimit=True,multiple=False,spaces=False): #British English program (god save the king)
-        print(( "".join("["*(b==boardWidth)+(" [" if b==boardWidth else "] " if b==1 else "  ").join((" "*spaces).join(("_" if letter==" " else letter+'\u0332') if (i+b)%2==0 and chequerboard else letter for i,letter in enumerate(["o" if s else " " for s in subboard[(b-1)*boardWidth:b*boardWidth]])) for subboard in board)+(("]\n" if b==1 else "\n ") if delimit else "\n") for b in range(boardWidth,0,-1))
+        part=(lambda board,b: (" "*spaces).join(("_" if letter==" " else letter+'\u0332') if (i+b)%2==0 and chequerboard else letter for i,letter in enumerate(["o" if s else " " for s in map(((lambda s: board>>self.BIAS+s//boardWidth*self.cellBits*self.WIDTH+s%boardWidth*self.cellWidth&1) if self.bitwise else board.__getitem__),range((b-1)*boardWidth,b*boardWidth))])))
+        print(( "".join("["*(b==boardWidth)+(" [" if b==boardWidth else "] " if b==1 else "  ").join(part(subboard,b) for subboard in board)+(("]\n" if b==1 else "\n ") if delimit else "\n") for b in range(boardWidth,0,-1))
                if multiple else
-                "["*delimit+"".join((" "*spaces).join(("_" if letter==" " else letter+'\u0332') if (i+b)%2==0 and chequerboard else letter for i,letter in enumerate(["o" if s else " " for s in board[(b-1)*boardWidth:b*boardWidth]]))+(("]\n" if b==1 else "\n ") if delimit else "\n") for b in range(boardWidth,0,-1))+"\033["+str(boardWidth)+"B"),end="") #ANSI escape sequences
-
+                "["*delimit+"".join(part(board,b)+(("]\n" if b==1 else "\n ") if delimit else "\n") for b in range(boardWidth,0,-1))+"\033["+str(boardWidth)+"B"),end="") #ANSI escape sequences
     def setBoardWidth(self,n,new=False):
-        global boardWidth
-        if new or n!=boardWidth:
-            global boardSquares,halfWidth,mediumHalfWidth,upperHalfWidth,centre,unreflectedLayerIndices,layerTypes,stateNumber
-            boardWidth=n
-            boardSquares=boardWidth**2
-            halfWidth=(boardWidth-1)//2
-            mediumHalfWidth=boardWidth//2
-            upperHalfWidth=(boardWidth+1)//2
-            centre=(boardSquares-1)/2
-            if boardWidth%2:
-                centre=int(centre) #>mfw no int= operator
-            (unreflectedLayerIndices,layerTypes)=zip(*[(self.layerIndices(x,y),self.layerType(x,y)) for x in range(halfWidth+1) for y in range(x+1)])
+        global boardWidth,boardSquares,halfWidth,centre,unreflectedLayerIndices,layerTypes,stateNumber
+        boardWidth=n
+        boardSquares=boardWidth**2
+        halfWidth=(boardWidth-1)//2
+        centre=(boardSquares-1)/2
+        if boardWidth%2:
+            centre=int(centre) #>mfw no int= operator
+        (unreflectedLayerIndices,layerTypes)=zip(*[(self.layerIndices(x,y),self.layerType(x,y)) for x in range(halfWidth+1) for y in range(x+1)])
+        if self.bitwise:
+            self.WIDTH=self.HEIGHT=boardWidth+2
+            self.COLSHIFT=self.cellBits*self.WIDTH
+            self.WRAPSHIFT=self.COLSHIFT*boardWidth
+            self.unitNeighbourhood=((1<<self.cellWidth)-1)*self.ORsum(1<<self.COLSHIFT*i for i in range(self.cellHeight))
+            self.lastColumn=self.ORsum(self.unitNeighbourhood<<i*self.COLSHIFT for i in range(self.HEIGHT))
+            self.lastRow=self.ORsum(self.unitNeighbourhood<<self.cellWidth*i for i in range(self.WIDTH))
+            self.BIAS=((self.WIDTH+1)*self.cellWidth if self.OT or self.byteINT else (self.WIDTH*self.cellBits+1)*4)
 
-    positionReflect=(lambda self,position,axis: boardWidth+~position+position//boardWidth*boardWidth*2 if axis==0 else position%boardWidth+(boardWidth+~position//boardWidth)*boardWidth if axis==1 else position//boardWidth+(position%boardWidth)*boardWidth if axis==2 else position)
-    compoundPositionReflect=(lambda self,position,axes,reverse=False: ( ( ( (position+1)*boardWidth+~((boardSquares+1)*(position//boardWidth)))
-                                                                      if axes[reverse] else
-                                                                       ( boardWidth*(boardWidth+~position)+(1+boardSquares)*(position//boardWidth)))
-                                                                    if axes[0]^axes[1] else
-                                                                     ( ( ((1-boardSquares)*~(position//boardWidth)-position*boardWidth))
-                                                                      if axes[0] else
-                                                                       position*boardWidth-(boardSquares-1)*(position//boardWidth))) #position//boardWidth+position%boardWidth*boardWidth=position*boardWidth-(boardSquares-1)*position//boardWidth
-                                                                if axes[2] else
-                                                                 ( ( (boardSquares+~position) #(boardWidth-position//boardWidth)*boardWidth+(boardWidth-position%boardWidth)=boardSquares+boardWidth-position
-                                                                    if axes[0] else
-                                                                     position+boardWidth*(boardWidth+~(2*(position//boardWidth))))
-                                                                  if axes[1] else
-                                                                   ( boardWidth*(1+2*(position//boardWidth))+~position #position=position%boardWidth+position//boardWidth*boardWidth, so position//boardWidth*boardWidth=position-position%boardWidth, so boardWidth+~position%boardWidth+position//boardWidth*boardWidth=boardWidth+~position%boardWidth+position-position%boardWidth=boardWidth+~2*position%boardWidth+position=boardWidth+~(2*position%boardWidth)+position=~position+boardWidth*(1+2*position//boardWidth)
-                                                                    if axes[0] else
-                                                                     position))) #some are probably reducible further (depending on whether floor division or modulo is more efficient, but also probably regardless)
-    boardReflect=(lambda self,board,axis: board if axis==-1 else tuple((x for y in range(boardWidth) for x in reversed(board[y*boardWidth:(y+1)*boardWidth])) if axis==0 else (x for y in range(boardWidth,0,-1) for x in board[(y-1)*boardWidth:y*boardWidth]) if axis==1 else (x for y in range(boardWidth) for x in board[y:y+boardSquares:boardWidth])))
-    compoundReflect=(lambda self,board,axes: board if axes==(0,0,0) else tuple(x for y in self.conditionalReverse(axes[not axes[2]],range(boardWidth)) for x in self.conditionalReverse(axes[axes[2]],(board[y:y+boardSquares:boardWidth] if axes[2] else board[y*boardWidth:(y+1)*boardWidth]))))
     layerIndices=(lambda self,x,y: ([centre] if x==0 else #a perfect place                                                                                                                #1, on 1*1 board is [(0,0)]
                                [centre+x*p*(boardWidth if skewedness else 1) for skewedness in range(2) for p in range(-1,3,2)] if y==0 else                                         #2, on 3*3 board is [(0,1),(2,1),(1,0),(1,2)]
                                [centre+x*(xp+yp*boardWidth) for xp in range(-1,3,2) for yp in range(-1,3,2)] if y==x else                                                            #3, on 3*3 board is [(0,0),(0,2),(2,0),(2,2)]
@@ -54,16 +40,19 @@ class reducer:
     layerType=(lambda self,x,y: (1 if x==0 else 2 if y==0 else 3 if y==x else 0) if boardWidth%2 else (3 if y==x else 0))
     layerPriorities=(lambda layer,type: self.instanceReflectionPriorities[type][self.ORsum(l<<i for i,l in enumerate(layer))])
     def constructCellular(self,layers):
-        output=[False]*boardSquares
-        '''liter=iter(layers)
-        for i,l in ((i,l) for x in range(halfWidth+1) for y in range(x+1) for i,l in zip(layerIndices(x,y),next(liter))): #next(liter) can be layers[x*(x+1)/2+y-1], I think
-            output[i]=l'''
-        for k,l in zip(unreflectedLayerIndices,layers):
-            for i,j in enumerate(k):
-                output[j]=l>>i&1
-        return tuple(output)
+        if self.bitwise:
+            return(self.ORsum((l>>i&1)<<(j%boardWidth*self.cellWidth+j//boardWidth*self.COLSHIFT+self.BIAS) for k,l in zip(unreflectedLayerIndices,layers) for i,j in enumerate(k)))
+        else:
+            output=[False]*boardSquares
+            '''liter=iter(layers)
+            for i,l in ((i,l) for x in range(halfWidth+1) for y in range(x+1) for i,l in zip(layerIndices(x,y),next(liter))): #next(liter) can be layers[x*(x+1)/2+y-1], I think
+                output[i]=l'''
+            for k,l in zip(unreflectedLayerIndices,layers):
+                for i,j in enumerate(k):
+                    output[j]=l>>i&1
+            return(tuple(output))
 
-    setLayers=(lambda self,state: (lambda layers: (layers,[self.ORsum(m<<i for i,m in enumerate(l)) for l in layers]))([list(map(state.__getitem__,l)) for l in unreflectedLayerIndices]))
+    setLayers=(lambda self,state: (lambda layers: (layers,[self.ORsum(m<<i for i,m in enumerate(l)) for l in layers]))([list(map((lambda l: state>>self.BIAS+l%boardWidth*self.cellWidth+l//boardWidth*self.COLSHIFT&1) if self.bitwise else state.__getitem__,l)) for l in unreflectedLayerIndices]))
     def symmetry(self,state,reflectionMode=0):
         if self.symmetryReduction:
             (layers,layerNumbers)=self.setLayers(state)
@@ -199,10 +188,38 @@ class reducer:
         else:
             return(self.getter(ind))
     __len__=(lambda self: self.length)
-    def __init__(self,boardWidth,reduction=True):
-        self.niemiec=True
+    def __init__(self,boardWidth,reduction=True,bitwise=True,cellWidth=4,cellHeight=1,OT=True,byteINT=True):
+        self.bitwise=bitwise;self.cellWidth=cellWidth;self.cellHeight=cellHeight;self.cellBits=cellWidth*cellHeight;self.OT=OT;self.byteINT=byteINT
         self.symmetryReduction=reduction
         self.setBoardWidth(boardWidth,True)
+        self.positionReflect=(lambda self,position,axis: boardWidth+~position+position//boardWidth*boardWidth*2 if axis==0 else position%boardWidth+(boardWidth+~position//boardWidth)*boardWidth if axis==1 else position//boardWidth+(position%boardWidth)*boardWidth if axis==2 else position)
+        self.compoundPositionReflect=(lambda self,position,axes,reverse=False: ( ( ( (position+1)*boardWidth+~((boardSquares+1)*(position//boardWidth)))
+                                                                               if axes[reverse] else
+                                                                                ( boardWidth*(boardWidth+~position)+(1+boardSquares)*(position//boardWidth)))
+                                                                             if axes[0]^axes[1] else
+                                                                              ( ( ((1-boardSquares)*~(position//boardWidth)-position*boardWidth))
+                                                                               if axes[0] else
+                                                                                position*boardWidth-(boardSquares-1)*(position//boardWidth))) #position//boardWidth+position%boardWidth*boardWidth=position*boardWidth-(boardSquares-1)*position//boardWidth
+                                                                         if axes[2] else
+                                                                          ( ( (boardSquares+~position) #(boardWidth-position//boardWidth)*boardWidth+(boardWidth-position%boardWidth)=boardSquares+boardWidth-position
+                                                                             if axes[0] else
+                                                                              position+boardWidth*(boardWidth+~(2*(position//boardWidth))))
+                                                                           if axes[1] else
+                                                                            ( boardWidth*(1+2*(position//boardWidth))+~position #position=position%boardWidth+position//boardWidth*boardWidth, so position//boardWidth*boardWidth=position-position%boardWidth, so boardWidth+~position%boardWidth+position//boardWidth*boardWidth=boardWidth+~position%boardWidth+position-position%boardWidth=boardWidth+~2*position%boardWidth+position=boardWidth+~(2*position%boardWidth)+position=~position+boardWidth*(1+2*position//boardWidth)
+                                                                             if axes[0] else
+                                                                              position))) #some are probably reducible further (depending on whether floor division or modulo is more efficient, but also probably regardless)
+        self.shift=(lambda i: '>>'+str(i) if i>0 else '' if i==0 else '<<'+str(-i))
+        self.boardReflect=eval( "lambda board,axis: board if axis==-1 else "+''.join('|'.join(f)+(' if axis=='+str(i)+' else ')*(i!=2) for i,f in enumerate((("(board&"+str(self.lastColumn<<self.cellWidth*i)+')'+self.shift(self.cellWidth*(i-(self.WIDTH+~i))) for i in range(self.WIDTH)),
+                                                                                                                                                        ("(board&"+str(self.lastRow<<self.COLSHIFT*i)+')'+self.shift(self.COLSHIFT*(i-(self.HEIGHT+~i))) for i in range(self.HEIGHT)),
+                                                                                                                                                        ("(board&"+str((lambda x: (x,self.print(x))[0])(self.ORsum(1<<self.cellWidth*(i+(self.WIDTH+1)*j)&self.lastRow<<self.COLSHIFT*j for j in range(self.WIDTH) if i+(self.WIDTH+1)*j>0)))+')'+self.shift(self.cellWidth*(-i*(self.WIDTH-1))) for i in range(1-self.WIDTH,self.WIDTH))))) #inelegant but only runs once :-)
+                                                                                                                                                        #("(board&"+str((lambda x: (x,self.print(x))[0])(self.ORsum(1<<self.cellWidth*(i+self.WIDTH+(self.WIDTH-1)*j)&self.lastRow<<self.COLSHIFT*j for j in range(self.WIDTH) if i>(1-self.WIDTH)*j)))+')'+self.shift(self.cellWidth*(i*(self.WIDTH+1)+1)) for i in range(1-self.WIDTH,self.WIDTH)))))) #original accidental y=WIDTH+~x version (could be used if I am one day no longer too lazy to make closed forms for each compoundReflect)
+                               if self.bitwise else
+                                "lambda board,axis: board if axis==-1 else "+''.join('('+','.join('board['+str(j)+']' for j in l)+')'+(' if axis=='+str(i)+' else ')*(i!=2) for i,l in enumerate(((x for y in range(boardWidth) for x in range((y+1)*boardWidth-1,y*boardWidth-1,-1)),
+                                                                                                                                                                                             (x for y in range(boardWidth,0,-1) for x in range((y-1)*boardWidth,y*boardWidth)),
+                                                                                                                                                                                             (x for y in range(boardWidth) for x in range(y,y+boardSquares,boardWidth))))))
+        self.compoundReflect=(lambda board,axes: board if axes==(0,0,0) else reduce(self.boardReflect,(i for i,a in enumerate(axes) if a),board) if self.bitwise else tuple(x for y in self.conditionalReverse(axes[not axes[2]],range(boardWidth)) for x in self.conditionalReverse(axes[axes[2]],(board[y:y+boardSquares:boardWidth] if axes[2] else board[y*boardWidth:(y+1)*boardWidth]))))
+        self.intState=(lambda state: self.ORsum((state&1<<i)<<(self.BIAS+i%boardWidth*self.cellWidth+i//boardWidth*self.COLSHIFT-i) for i in range(boardSquares)) if self.bitwise else tuple(bool(state>>i&1) for i in range(boardSquares)))
+        self.niemiec=True
         self.length=( ( (((2**boardSquares+2**((boardSquares+1)//2))//2+2**((boardSquares+3)//4))//2+2**((boardSquares+boardWidth)//2))//2
                        if boardWidth%2 else #from https://oeis.org/A054247 (my beloved)
                         ((2**(boardSquares-1)+3*2**(boardSquares//2-1))+2**(boardSquares//4)+2**((boardSquares+boardWidth)//2))//4)
@@ -245,7 +262,7 @@ if __name__=='__main__':
     #print(states)
     print("cellular generated",time.time()-present)
     print('')
-    #(lambda r: (lambda r,l: (print(l),r.print([i for i in r[l//2:l//2+4]],multiple=True)))(r,len(r)))(reducer(8));exit()
+    #(lambda r: (lambda r,l: (print(l),r.print([i for i in r[l//2:l//2+4]],multiple=True),r.print(tuple(r.boardReflect(r[l//2],i) for i in range(-1,3)),multiple=True)))(r,len(r)))(reducer(8));exit()
     '''present=time.time() #no longer
     print("generating Pólyas")
     polyas=list(map(index,states))
@@ -265,8 +282,7 @@ if __name__=='__main__':
     while True:
         i=0
         while i==0 or r.symmetry(state)==r.symmetry(r.symmetry(state)):
-            state=random.getrandbits(boardSquares)
-            state=tuple(bool(state>>i&1) for i in range(boardSquares))
+            state=r.intState(random.getrandbits(boardSquares))
             print("wibble")
             print(r.RLE(state))
             r.print(state)

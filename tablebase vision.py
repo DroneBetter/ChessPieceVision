@@ -1,9 +1,9 @@
-import math, random, os
+import math,random,os
 imagePath=os.path.join(os.path.dirname(__file__),"Cburnett_pieces")
 from sympy.utilities.iterables import combinations as multiset_combinations
 from sympy.utilities.iterables import subsets
 try:
-    from sympy.utilities.iterables import multiset_permutations  # generates permutations where some elements are identical, from https://stackoverflow.com/a/60252630
+    from sympy.utilities.iterables import multiset_permutations  # generates permutations where some elements are identical
 except:
     def multiset_permutations(items): #from https://stackoverflow.com/a/73466421
         def visit(head):
@@ -24,7 +24,7 @@ except:
             ai=nxts[i]
             aai=nxts[ai]
             yield(visit(k))
-from itertools import accumulate, chain, groupby, starmap
+from itertools import accumulate,chain,groupby,starmap
 
 try:
     from itertools import pairwise
@@ -32,6 +32,8 @@ except: #for non-3.10 users
     def pairwise(iterable):
         return zip(iterable[:-1],iterable[1:])
 from functools import reduce
+from eightfold_reducer import reducer
+
 def sgn(n):
     return 1 if n>0 else -1 if n<0 else 0
 def moddiv(a,b): #big endians get out ree
@@ -50,7 +52,7 @@ def lap(func,*iterables): #Python 3 was a mistake
     return list(map(func,*iterables))
 def minmax(iterable):
     return(min(iterable),max(iterable))
-bitwise=False #turns out not to work on manifoldless INT (non-OT) rules above 3*3
+bitwise=False #turns out not to work on manifoldless INT (non-OT) rules above 3*3 (will be fixed eventually)
 colourMode=False
 manifold=(0,0)
 pieceNames=["empty","king","queen","rook","bishop","knight","pawn","nightrider"]
@@ -138,16 +140,16 @@ def initialisePygame(chessGuiMode=False,interface=False,doNot=False):
         global cellColours,imageMode,pieceImages,renderPiece,renderBoard
         maximum=(--0--boardWidth//faces*faces if mode==2 else boardSquares)
         cellColours=tuple(angleColour(c*math.tau/maximum) for c in range(maximum))
-        imageMode=True
         try:
             pieceImages=[[pygame.image.load(os.path.join(imagePath,"Chess_"+i+("d" if j else "l")+"t45.svg")) for i in pieceSymbols[1][1:7]] for j in range(2)]
+            imageMode=True
         except:
             imageMode=False
-        def renderPiece(pieceType,pieceColour,screenPosition,squareSize):
+        def renderPiece(pieceType,pieceColour,screenPosition,squareSize,interactive=False):
             if imageMode:
                 screen.blit(pygame.transform.rotate(pygame.transform.scale(pieceImages[pieceColour][4 if pieceType==7 else pieceType-1],[squareSize]*2),180*(pieceType==7)),screenPosition) #Pygame uses degrees instead of radians (frankly ridiculous)
             else:
-                colour=(0,255,0) if (interactive and i==selectedSquare and selectedness) else colours[5+pieceColour]
+                colour=(0,255,0) if interactive else colours[5+pieceColour]
                 drawShape([squareSize*3/4]*2,[sp+(1/(8 if pieceType==3 else 2))*squareSize for sp in screenPosition],colour,(0 if pieceType==3 else pieceType))
         def renderBoard(state,perceivedMoves,interactive,boardSize=minSize,renderPosition=(0,0)):
             squareSize=boardSize//boardWidth
@@ -156,11 +158,11 @@ def initialisePygame(chessGuiMode=False,interface=False,doNot=False):
                     m=[selectedSquare,i]
                 squarePosition=[i%boardWidth,((boardWidth-1)/2 if mode==2 else boardWidth+~i//boardWidth)] #I hate Pygame's coordinates so much
                 screenPosition=[r+s*squareSize for r,s in zip(renderPosition,squarePosition)]
-                drawShape([squareSize]*2,screenPosition,((((0,255,0) if isOptimal(stateTransitions[currentIndex][perceivedMoves.index(m)]) else (255,0,0)) if interactive and selectedness and m in perceivedMoves else colours[sum(squarePosition)%2]) if mode==0 else ((cellColours[i] if colourMode else (255,)*3) if s else (48,)*3)),0) #Golly colour
+                drawShape([squareSize]*2,screenPosition,((((0,255,0) if imageMode and i==selectedSquare or isOptimal(stateTransitions[currentIndex][perceivedMoves.index(m)]) else (255,0,0)) if interactive and selectedness and (m in perceivedMoves or imageMode and i==selectedSquare) else colours[sum(squarePosition)%2]) if mode==0 else ((cellColours[i] if colourMode else (255,)*3) if s else (48,)*3)),0) #Golly colour
                 if mode==0:
                     if s!=(0,0):
                         if s[0]!=0:
-                            renderPiece(s[0],s[1],screenPosition,squareSize)
+                            renderPiece(s[0],s[1],screenPosition,squareSize,(interactive and selectedness and i==selectedSquare))
             if interactive and clickDone and all(0<=m<boardSize for m in mousePos[:2]):
                 global clickedSquare
                 clickedSquare=sum(conditionalFlip(di,m//squareSize)*boardWidth**di for di,m in enumerate(mousePos[:2]))#mousePos[0]//squareSize+(boardWidth+~(mousePos[1]//squareSize))*boardWidth
@@ -188,7 +190,7 @@ def initialisePygame(chessGuiMode=False,interface=False,doNot=False):
     global FPS
     FPS=60
 
-guiMenuMode=True #not to be confused with guiMode, that is for the chess interface
+guiMenuMode=False #not to be confused with guiMode, that is for the chess interface
 if guiMenuMode:
     import pygame
     from pygame.locals import *
@@ -241,7 +243,7 @@ if mode==1:
                 [integer>>((((i//boardWidth+1)*WIDTH+i%boardWidth+1)*4 if OT else ((i//boardWidth+1)*3*WIDTH+i%boardWidth+1)*3+WIDTH*3+1) if mode else i)&1 for i in range(boardSquares)])
 symmetryReduction=True#(mode!=2 and input("Would you like reduction by "+("thirty-two" if manifold==(2,2) else "four" if (2,1)!=manifold!=(1,2) and manifold[0]!=manifold[1] else "eight")+"fold symmetry? (y/n)")=="y") #not mentioning vertex transitivity
 transitivityReduction=symmetryReduction #they will probably want it
-setBoardWidth(4,True) #input("Which board width would you like?")
+setBoardWidth(int(input("Which board width would you like? ")),True)
 if guiMenuMode and mode<2:
     initialisePygame(doNot=True)
     if mode:
@@ -384,6 +386,7 @@ def translateTuple(position,x,y): #Nones are not forgone in cellular automata mo
 
 #abandon hope, all ye who enter here
 #(it is unclear in some cases whether, for instance, a (-1,1) displacement on a 3*3 horizontal board encoded to a change by 2 is meaning to move 2 cells rightwards or one upwards and one leftwards)
+#to fix, would require something inelegant like https://www.chessprogramming.org/0x88#Coordinate_Transformation
 '''def flattenTranslation(x,y):
     return ( ( conditionalFlip(y//boardWidth%2,x%boardWidth)+boardWidth*conditionalFlip(x//boardWidth%2,y%boardWidth)
               if manifold[0]==2 else
@@ -763,226 +766,6 @@ elif mode==1:
         print("["*delimit+( ("\n"+" "*delimit).join("".join(("o" if i>>((4 if OT else 3)*j)&1 else " ") for j in range(inner,WIDTH-inner)) for i in (board>>(4*WIDTH*i if OT else 3*WIDTH*(i*3+1)+1)&((1<<((4 if OT else 3)*WIDTH))-1) for i in range(inner,HEIGHT-inner)))+"]"*delimit+"\n"
                            if bitwise else
                             "".join(["".join(("_" if letter==" " else letter+'\u0332') if (i+b)%2==0 and chequerboard else letter for i,letter in enumerate(["o" if s else " " for s in board[(b-1)*boardWidth:b*boardWidth]]))+(("]\n" if b==1 else "\n ") if delimit else "\n") for b in range(boardWidth,0,-1)])+"\033["+str(boardWidth)+"B"),end="") #ANSI escape sequences
-    def layerIndices(x,y):
-        return (([centre] if x==0 else #a perfect place                                                                                                               #1, on 1*1 board is [(0,0)]
-                 [centre+x*p*(boardWidth if skewedness else 1) for skewedness in range(2) for p in range(-1,3,2)] if y==0 else                                        #2, on 3*3 board is [(0,1),(2,1),(1,0),(1,2)]
-                 [centre+x*(xp+yp*boardWidth) for xp in range(-1,3,2) for yp in range(-1,3,2)] if y==x else                                                           #3, on 3*3 board is [(0,0),(0,2),(2,0),(2,2)]
-                 [centre+conditionalTranspose(skewedness,x*xp,y*yp) for skewedness in range(2) for xp in range(-1,3,2) for yp in range(-1,3,2)]) if boardWidth%2 else #0, on 5*5 board is [(0,1),(0,3),(4,1),(4,3),(1,0),(3,0),(1,4),(3,4)]
-                ([int(centre+(x+1/2)*xp+(y+1/2)*yp*boardWidth) for xp in range(-1,3,2) for yp in range(-1,3,2)] if y==x else #very suspicious indeed                  #3, on 2*2 board is [(0,0),(0,1),(1,0),(1,1)]
-                 [int(centre+conditionalTranspose(skewedness,(x+1/2)*xp,(y+1/2)*yp)) for skewedness in range(2) for xp in range(-1,3,2) for yp in range(-1,3,2)]))    #0, on 4*4 board is [(0,1),(0,2),(3,1),(3,2),(1,0),(2,0),(1,3),(2,3)]
-    def layerType(x,y):
-        return ((1 if x==0 else 2 if y==0 else 3 if y==x else 0) if boardWidth%2==1 else (3 if y==x else 0))
-    (unreflectedLayerIndices,layerTypes)=zip(*[(layerIndices(x,y),layerType(x,y)) for x in range(halfWidth+1) for y in range(x+1)])
-    def constructCellular(layers):
-        '''liter=iter(layers)
-        for i,l in ((i,l) for x in range(halfWidth+1) for y in range(x+1) for i,l in zip(layerIndices(x,y),next(liter))): #next(liter) can be layers[x*(x+1)/2+y-1], I think
-            output[i]=l'''
-        if bitwise:
-            return(intState(reduce(int.__or__,((l>>i&1)<<j for k,l in zip(unreflectedLayerIndices,layers) for i,j in enumerate(k)))))
-        else:
-            output=[False]*boardSquares
-            for k,l in zip(unreflectedLayerIndices,layers):
-                for i,j in enumerate(k):
-                    output[j]=l>>i&1
-            return(tuple(output))
-    typeLengths=(8,1,4,4)
-    typeBits=(3,0,2,2)
-    #old and bad method (resolving about the lines of symmetry separately is impossible, you must resolve each of the eight combinations)
-    """def layerSymmetry(l,t,f=False): #layer, type, fourth axis (y==boardWidth+~x)
-        return [True]*(3+f) if t==1 else [l[0]==l[1],l[2]==l[3],l[2:0:-1]==l[0:6:3]]+[l[2::-2]==l[1:5:2]]*f if t==2 else [l[0:2]==l[2:4],l[0:4:2]==l[1:5:2],l[2]==l[1]]+[l[0]==l[3]]*f if t==3 else [l[4:8:2]+l[0:2]==l[5:9:2]+l[2:4],l[0:4:2]+l[4:6]==l[1:5:2]+l[6:8],l[4:6]+l[2:4]==l[0:2]+l[6:8]]+[l[5::-4]+l[4::-4]==l[2:10:4]+l[3:11:4]]*f
-    def suspiciousSymmetry(l,f=False):
-        return layerSymmetry(*l,f)
-    def illegalAxes(l,t,s=[True,True,True]): #layer (contents), type, symmetry, returns whether the greater of any of the first disparities (outwards, across all preserved lines of symmetry) lies on the higher-indiced side
-                #x flipping                                 y flipping                                 y==x reflection (transposition)        y==boardWidth+~x reflection
-        return([(s[0] and            l[0]<l[1]           ),(s[1] and            l[2]<l[3]           ),(s[2] and     l[2:0:-1]<l[0:6:3]     ),(len(s)==4 and s[3] and          l[2::-2]<l[1:5:2]           )] if t==2 else
-               [(s[0] and          l[0:2]<l[2:4]         ),(s[1] and        l[0:4:2]<l[1:5:2]       ),(s[2] and          l[2]<l[1]         ),(len(s)==4 and s[3] and              l[0]<l[3]               )] if t==3 else
-               [(s[0] and l[4:8:2]+l[0:2]<l[5:9:2]+l[2:4]),(s[1] and l[0:4:2]+l[4:6]<l[1:5:2]+l[6:8]),(s[2] and l[4:6]+l[2:4]<l[0:2]+l[6:8]),(len(s)==4 and s[3] and l[5::-4]+l[4::-4]<l[2:10:4]+l[3:11:4])] if t==0 else
-               [False]*4)
-    def isLayerIllegal(l,t,s=[True,True,True]):
-        return any(illegalAxes(l,t,s))
-    def symmetry(state,reflectionMode=0):
-        #print("i",state)
-        if symmetryReduction:
-            def additionalSymmetry(l,a): #car's parked in the sun
-                #print("wibble",l,a)
-                #print("wobble",lap(bool.__and__,l,suspiciousSymmetry(a,f=True)))
-                return lap(bool.__and__,l,suspiciousSymmetry(a,f=True))
-            '''#print(len(state),[layerIndices(x,y) for x in range(halfWidth+1) for y in range(x+1)])
-            layers=[([state[i] for i in layerIndices(x,y)],layerType(x,y)) for x in range(halfWidth+1) for y in range(x+1)]
-            def eitherOr(a,b):
-                return lap(bool.__or__,a,b)
-            branchSymmetry=accumulate(layers,func=additionalSymmetry,initial=[True]*4)
-            #for (l,t),s in zip(layers,branchSymmetry):
-                #print("isLayerIllegal("+str(l)+","+str(t)+","+str(s)+")")
-            #print(len(layers),len([i for i,j in zip(*zip(*layers))]),len([i for i in branchSymmetry]))
-            #print(lap(isLayerIllegal,zip(*layers),branchSymmetry))
-            axesOfIllegality=reduce(eitherOr,map(illegalAxes,*zip(*layers),branchSymmetry))
-            #print("axes",axesOfIllegality)
-            reflections=axesOfIllegality[:2]+[axesOfIllegality[3]^axesOfIllegality[1] if axesOfIllegality[0]^axesOfIllegality[1] else axesOfIllegality[2]] #if the y axis is flipped, the one that is transposition in the compound basis (whichever one it is in the initial basis) will have its disparity reversed 
-            #print("a",axesOfIllegality,"\nr",reflections,"\no",compoundReflect(state,reflections))'''
-            '''for i in ((r,[compoundPositionReflect(i,r) for i in range(boardSquares)]) for r in ([i>>j &1 for j in range(3)] for i in range(8))):
-                print(i)
-            exit()'''
-            reflectedLayerStates=([[state[compoundPositionReflect(c,r)] for c in l] for l in unreflectedLayerIndices] for r in ([i>>j &1 for j in range(3)] for i in range(8))) #eightfold
-            def isLayerStateLegal(state,layerTypes):
-                branchSymmetry=list(accumulate(zip(state,layerTypes),func=additionalSymmetry,initial=[True]*3))[:3]
-                return not any(isLayerIllegal(l,t,s) for l,t,s in zip(state,layerTypes,branchSymmetry))
-            legalIndice=next(i for i,l in enumerate(isLayerStateLegal(s,layerTypes) for s in reflectedLayerStates) if l) #[isLayerStateLegal(s,layerTypes) for s in reflectedLayerStates].index(True) checks redundant ones
-            reflections=[legalIndice>>j &1 for j in range(3)] #expensive but averts problems like the [False,False, True,
-                                                                                                      #False,False,False,
-                                                                                                      # True,False,False] board (that has an illegal disparity in only the x and y axes, cancelling each other out), may perhaps fix original one
-        else:
-            reflections=[False]*3
-        #print("r",reflections)
-        #print("o",compoundReflect(state,reflections))
-        return reflections if reflectionMode==2 else (compoundReflect(state,reflections),reflections) if reflectionMode==1 else compoundReflect(state,reflections)
-    def generateCellular(): #eightfold symmetry reduction is harder when there are no kings, and requires counting on basis of sets of cells with the same displacement from the centre, "layers" (if a layer violates a line of symmetry in the wrong direction (that hasn't been already violated by another layer less far), it is incremented again and all layers further out are skipped)
-        if symmetryReduction:
-            global layerTypes
-            layerTypes=[layerType(x,y) for x in range(halfWidth+1) for y in range(x+1)]
-            typeLengths=[8,1,4,4]
-            layers=[[False]*typeLengths[l] for l in layerTypes]
-            #print(layerTypes,layers)
-            branchSymmetry=[[True]*3]*len(layers)
-            arm=len(layers)-1
-            cellulars=[constructCellular(layers)] #[[False]*boardSquares]
-            #cellularSymmetries=[branchSymmetry]
-            do=True
-            while True:
-                layers[arm][0]^=True
-                finger=0
-                #print("finger",arm,layers[arm][0])
-                while not layers[arm][finger]: #carry the 1
-                    finger+=1
-                    if finger==len(layers[arm]):
-                        #layers[arm:len(layers)]=[[False]*typeLengths[l] for l in layerTypes[arm:len(layers)]] #would be arm+1 but is done before
-                        arm-=1
-                        #print("regress",arm)
-                        if arm<0:
-                            break
-                        else:
-                            #del branchSymmetry[-1]
-                            #print("del",len(branchSymmetry))
-                            layers[arm][0]^=True
-                            finger=0
-                            #print("continue from arm",arm)
-                            #break #bypasses while's else (if broken, this layer had no more legal states and the next must be regressed to instead) #edit: continues inline
-                    else:
-                        layers[arm][finger]^=True
-                #print(arm,len(layers),len(layerTypes))
-                #print(layers[arm],layerTypes[arm],branchSymmetry[-2],len(branchSymmetry))
-                if arm<0:
-                    break
-                #print(len(layers),len(layerTypes),arm,len(branchSymmetry))
-                elif not isLayerIllegal(layers[arm],layerTypes[arm],branchSymmetry[arm]):
-                    #print(len(branchSymmetry),len(layers)+1-len(branchSymmetry))
-                    branchSymmetry[arm+1:]=[lap(bool.__and__,branchSymmetry[arm],layerSymmetry(layers[arm],layerTypes[arm]))]*(len(layers)-(arm+1)) #[b and l for b,l in zip(branchSymmetry[-2],layerSymmetry(layers[arm],layerTypes[arm]))] doesn't work either, it isn't a problem with map
-                    arm=len(layers)-1
-                    cellulars.append(constructCellular(layers))
-                    #printBoard(cellulars[-1])
-                    #print(branchSymmetry)
-                    #cellularSymmetries.append(branchSymmetry)
-        else:
-            cellulars=[]
-            '''current=[False]*boardSquares
-            for i in range(2**boardSquares):
-                cellulars.append(tuple(current))
-                j=0
-                while (j==0 or not current[j-1]) and j<len(current):
-                    current[j]^=True
-                    j+=1'''
-            #cellulars=[[False]*(boardSquares-(len(bin(i))-2))+[bool(int(j)) for j in list(bin(i))[2:]] for i in range(2**boardSquares)] #not sure whether faster but I dislike it (though I don't like the current one either (though if you want speed, the point of symmetry is to be faster))
-        return cellulars"""
-    
-    #generate lists for layers (requires boardWidth be 5) (this part not optimised but only needs to run once)
-    '''def layerBoard(layer,layerIndices):
-        board=[False]*boardSquares
-        for n,m in enumerate(layerIndices):
-            board[m]=bool(layer>>n&1)
-        return(board)
-    instances=[[layerBoard(n,i) for n in range(2**l)] for i,l in ((unreflectedLayerIndices[layerTypes.index(i)],l) for i,l in enumerate(typeLengths))]
-    print(list(map(list.__len__,instances)))
-    instanceReflectionPriorities=[[[l.index(f) for f in j] for j,l in zip(i,[sorted(set(j)) for j in i])] for i in [[[compoundReflect(j,[f>>r&1 for r in range(3)]) for f in range(8)] for j in [layerBoard(n,unreflectedLayerIndices[layerTypes.index(i)]) for n in range(2**l)]] for i,l in enumerate(typeLengths)]]
-    instanceReflectionAllowednesses=[[sum((l==0)<<i for i,l in enumerate(j)) for j in i] for i in instanceReflectionPriorities]
-    def equation(name,ins,nestedness):
-        print(name+"=("+(str(ins) if nestedness==0 else ",".join(map(str,ins) if nestedness==1 else (("("+",".join(map(str,i) if nestedness==2 else ("("+",".join(map(str,j))+")" for j in i))+")") for i in ins)))+")")
-    #print([[max(j) for j in i] for m,i in enumerate(instanceReflectionPriorities)])
-    #equation("instanceReflectionAllowednesses",instanceReflectionAllowednesses,2)
-    equation("instanceReflectionAllowednesses",[sum(l<<(8*i) for i,l in enumerate(j)) for j in instanceReflectionAllowednesses],0)
-    print(tuple(map(tuple,instanceReflectionAllowednesses))==tuple(tuple((i>>(8*l))&((1<<8)-1) for l in range(2**t)) for t,i in zip(typeLengths,[sum(l<<(8*i) for i,l in enumerate(j)) for j in instanceReflectionAllowednesses])))
-    #equation("instanceReflectionPriorities",instanceReflectionPriorities,3)
-    equation("instanceReflectionPriorities",instanceReflectionPriorities,3)
-    equation("instanceReflectionPriorities",tuple(tuple(tuple(j>>(typeBits[m]*l)&(typeLengths[m]-1) for l in range(8)) for j in i) for m,i in enumerate(((sum(k<<(typeBits[m]*l) for l,k in enumerate(j)) for j in i) for m,i in enumerate(instanceReflectionPriorities)))),3)
-    equation("instanceReflectionPriorities",((sum(k<<(typeBits[m]*l) for l,k in enumerate(j)) for j in i) for m,i in enumerate(instanceReflectionPriorities)),2)
-    print(tuple(map(lambda n: tuple(map(tuple,n)),instanceReflectionPriorities))==tuple(tuple(tuple(j>>(typeBits[m]*l)&(typeLengths[m]-1) for l in range(8)) for j in i) for m,i in enumerate(((sum(k<<(typeBits[m]*l) for l,k in enumerate(j)) for j in i) for m,i in enumerate(instanceReflectionPriorities)))))'''
-    instanceReflectionAllowednesses=tuple(tuple((i>>(8*l))&((1<<8)-1) for l in range(2**t)) for t,i in zip(typeLengths,(0xff104050203060108090c040a02080f001114010010101108101401020202010020242102202021080028010202020200301011102030201020103012202020304104440241004400404044080808040051040500111401004104440a0208050061040402002664080960440202020600101011002010211020101102002220108180840202008408808084080808080091040102001691080990810808080900a0208502022201080808840a02080a0020101100202020102010211202220020c040444080c040408080c048808080c04040440080404400808044480880804080404400808044408080804808088080f0104500203061008090c40a02080ff,0xffff,0xff50a0f0031122030c44880c0f50a0ff,0xff1144502203661188990c44a02288ff)))
-    #print("("+",".join(tuple(map(lambda n: "("+",".join(tuple(map(str,map(hex,n))))+")",((0,1635557,3959123,799370,12818092,4829193,5087304,10154067,15141658,6894081,7152192,12477633,6390865,13881882,16205448,2396160,5361783,569427,1889510,1635557,9122351,5169255,5943399,5927005,6361619,11362855,12402782,10055773,12822117,13353501,13869597,10154067,9089598,5365885,827482,1667820,4297242,7033404,7807100,5927019,14849716,13226556,16130611,10055787,12818092,13353515,13869611,13881882,2433051,5361783,3522743,569427,9089598,2433051,5419134,5361783,10892350,9032247,4755483,7430255,4297242,9089598,9380413,2433051,7687617,3438995,2892993,3959123,4555976,5437313,5945800,6186817,13511624,11364801,12138945,10315585,15403353,15419208,15935304,12477633,267475,1111390,3950485,799370,6493543,340107,1979285,1700629,12945877,9205070,4985538,8152396,6390410,13091029,15930691,5058625,296154,1111411,1886122,1893731,8881523,2838843,294984,1958698,15075242,2101320,12130272,8152417,13076266,12825386,13600097,5087304,571767,841015,1357111,1635557,6460734,2773239,3547390,569427,10589502,8966391,7611191,5796581,10720500,8827070,4554842,5361783,11415432,2635393,7950145,6056715,10980634,9166024,7810824,6187713,6620808,13229825,14003976,10316481,15141658,15420104,15936200,16205448,2102931,3177118,3951829,3700949,8624798,4646943,295425,1701973,14818517,2101761,13938372,7895692,14883484,14891093,15665804,6894081,2131610,846524,3686186,799825,8624819,2204697,7572145,3831338,15076586,14797930,6850128,10283672,6390865,12826730,15665825,6922760,4299582,841911,1358007,1373862,6461630,4638270,5412414,3265591,10590398,10831415,11339902,2634259,12818092,4297242,13338220,9089598,4757184,7396802,7687617,2892993,9346960,2434752,7744968,5884865,11415432,11358081,4757184,7687617,6620808,13254472,11415432,4757184,2895333,2907604,3423700,3959123,6721428,646604,3550659,1927499,10850196,8970115,9743811,2892993,15109395,6362753,11411330,7687617,6623148,2907618,3423714,3955098,6721442,4374433,5414360,828616,10850210,10833816,11607960,7654864,15141658,14887705,6620808,11415432,585,571767,2895333,799370,4299582,38043,296154,1635557,6623148,2102931,2361042,3959123,6390865,12818092,15141658,0),(0,0),(0,13158,52377,21760,23055,10011,36174,23055,42480,29361,55524,42480,85,13158,52377,0),(0,10011,29361,13158,36174,23055,5140,10011,55524,16705,42480,29361,52377,36174,55524,0)))))+")") #too long due to 0x's
-    instanceReflectionPriorities=tuple(tuple(tuple(j>>(typeBits[m]*l)&(typeLengths[m]-1) for l in range(8)) for j in i) for m,i in enumerate(((0,1635557,3959123,799370,12818092,4829193,5087304,10154067,15141658,6894081,7152192,12477633,6390865,13881882,16205448,2396160,5361783,569427,1889510,1635557,9122351,5169255,5943399,5927005,6361619,11362855,12402782,10055773,12822117,13353501,13869597,10154067,9089598,5365885,827482,1667820,4297242,7033404,7807100,5927019,14849716,13226556,16130611,10055787,12818092,13353515,13869611,13881882,2433051,5361783,3522743,569427,9089598,2433051,5419134,5361783,10892350,9032247,4755483,7430255,4297242,9089598,9380413,2433051,7687617,3438995,2892993,3959123,4555976,5437313,5945800,6186817,13511624,11364801,12138945,10315585,15403353,15419208,15935304,12477633,267475,1111390,3950485,799370,6493543,340107,1979285,1700629,12945877,9205070,4985538,8152396,6390410,13091029,15930691,5058625,296154,1111411,1886122,1893731,8881523,2838843,294984,1958698,15075242,2101320,12130272,8152417,13076266,12825386,13600097,5087304,571767,841015,1357111,1635557,6460734,2773239,3547390,569427,10589502,8966391,7611191,5796581,10720500,8827070,4554842,5361783,11415432,2635393,7950145,6056715,10980634,9166024,7810824,6187713,6620808,13229825,14003976,10316481,15141658,15420104,15936200,16205448,2102931,3177118,3951829,3700949,8624798,4646943,295425,1701973,14818517,2101761,13938372,7895692,14883484,14891093,15665804,6894081,2131610,846524,3686186,799825,8624819,2204697,7572145,3831338,15076586,14797930,6850128,10283672,6390865,12826730,15665825,6922760,4299582,841911,1358007,1373862,6461630,4638270,5412414,3265591,10590398,10831415,11339902,2634259,12818092,4297242,13338220,9089598,4757184,7396802,7687617,2892993,9346960,2434752,7744968,5884865,11415432,11358081,4757184,7687617,6620808,13254472,11415432,4757184,2895333,2907604,3423700,3959123,6721428,646604,3550659,1927499,10850196,8970115,9743811,2892993,15109395,6362753,11411330,7687617,6623148,2907618,3423714,3955098,6721442,4374433,5414360,828616,10850210,10833816,11607960,7654864,15141658,14887705,6620808,11415432,585,571767,2895333,799370,4299582,38043,296154,1635557,6623148,2102931,2361042,3959123,6390865,12818092,15141658,0),(0,0),(0,13158,52377,21760,23055,10011,36174,23055,42480,29361,55524,42480,85,13158,52377,0),(0,10011,29361,13158,36174,23055,5140,10011,55524,16705,42480,29361,52377,36174,55524,0))))
-    #import pprint;pprint.pprint(instanceReflectionPriorities);pprint.pprint(instanceReflectionAllowednesses)
-    def layerPriorities(layer,type):
-        return(instanceReflectionPriorities[type][sum(l<<i for i,l in enumerate(layer))])
-
-    def symmetry(state,reflectionMode=0):
-        if symmetryReduction:
-            layers=[([state>>(((i//boardWidth+1)*(1 if OT else 3)*WIDTH+i%boardWidth+1)*(4 if OT else 3)+(WIDTH*3+1)*(not OT))&1 for i in l] if bitwise else lap(state.__getitem__,l)) for l in unreflectedLayerIndices]
-            layerNumbers=[sum(m<<i for i,m in enumerate(l)) for l in layers]
-            layerReflections=[instanceReflectionAllowednesses[t][n] for t,n in zip(layerTypes,layerNumbers)]
-            newReflections=(1<<8)-1
-            l=0
-            while l<len(layers):
-                newReflections&=instanceReflectionAllowednesses[layerTypes[l]][layerNumbers[l]]
-                if newReflections:
-                    reflections=newReflections
-                    l+=1
-                else:
-                    break
-            while l<len(layers):
-                m=min(p for i,p in enumerate(instanceReflectionPriorities[layerTypes[l]][layerNumbers[l]]) if reflections>>i&1)
-                newReflections=reflections&sum((p==m)<<i for i,p in enumerate(instanceReflectionPriorities[layerTypes[l]][layerNumbers[l]])) #may produce multiple but they will all yield the same board
-                if newReflections:
-                    reflections=newReflections
-                    if not reflections&(reflections-1): #power of 2
-                        break
-                l+=1
-            reflections=next(tuple(i>>a&1 for a in range(3)) for i in range(8) if reflections>>i&1)
-        else:
-            reflections=(False,)*3
-        return reflections if reflectionMode==2 else (compoundReflect(state,reflections),reflections) if reflectionMode==1 else compoundReflect(state,reflections)
-
-    def generateCellular():
-        if symmetryReduction:
-            states=[]
-            layerNumbers=[0]*len(unreflectedLayerIndices)
-            branchReflections=[(1<<8)-1]*len(layerNumbers)
-            arm=len(layerNumbers)-1
-            #elbow=arm #layer at which it switches from instanceReflectionAllowednesses to instanceReflectionPriorities
-            while True:#for i in range(2**boardSquares):
-                arm=len(layerNumbers)-1
-                states.append(constructCellular(layerNumbers))
-                #printBoard(states[-1])
-                while True:
-                    while arm>=0 and layerNumbers[arm]==(1 if layerTypes[arm]==1 else 2**typeLengths[layerTypes[arm]]-1):
-                        layerNumbers[arm]=0
-                        del branchReflections[-1]
-                        arm-=1
-                    if arm<0:
-                        break
-                    else:
-                        layerNumbers[arm]+=1
-                        m=min(p for i,p in enumerate(instanceReflectionPriorities[layerTypes[arm]][layerNumbers[arm]]) if len(branchReflections)<=1 or branchReflections[-2]>>i&1)
-                        #print(tuple(map(bin,branchReflections)),instanceReflectionPriorities[layerTypes[arm]][layerNumbers[arm]],sum((p==m)<<i for i,p in enumerate(instanceReflectionPriorities[layerTypes[arm]][layerNumbers[arm]]) if arm==0 or branchReflections[-2]>>i&1))
-                        if (#instanceReflectionAllowednesses[layerTypes[arm]][layerNumbers[arm]]&1 if arm<elbow else 
-                            instanceReflectionPriorities[layerTypes[arm]][layerNumbers[arm]][0]==m): #legal
-                            break
-                if arm<0:
-                        break
-                branchReflections[-1]=((1<<8)-1 if arm==0 else branchReflections[-2])&sum((p==m)<<i for i,p in enumerate(instanceReflectionPriorities[layerTypes[arm]][layerNumbers[arm]]) if arm==0 or branchReflections[-2]>>i&1) #formerly &ed by instanceReflectionAllowednesses[layerTypes[arm]][layerNumbers[arm]]
-                wibble=(len(layerNumbers)+~arm)
-                branchReflections+=[branchReflections[-1]]*(len(layerNumbers)+~arm)
-                #print(tuple(map(bin,branchReflections)),wibble)
-            return(states)
-        else:
-            return([])#[tuple(i>>n&1 for n in range(boardSquares)) for i in range(2**boardSquares)])
 
     transitions=tuple(a+t for a in ("b","s") for t in ("0c","1c","2c","3c","2n","4c","1e","2a","2k","3n","3i","4n","3q","3y","4y","5e","2e","3a","3j","4a","4w","5a","3k","4q","4k","5j","5k","6e","3e","4r","4j","5n","5i","6a","5q","5y","6k","7e","2i","3r","4i","4t","5r","4z","6i","4e","5c","6c","7c","6n","8c"))
     totalTransitions=[{"c"}, #using c for 0 and 8 because otherwise no distinction from empty set
@@ -1144,7 +927,7 @@ elif mode==1:
             #edgeMAPs=tuple(n&(edgeMask*unitNeighbourhood>>(0 if OT else 1+3*WIDTH)) for i,n in zip(MAPindexes,checkedNeighbourhoods) if transitions[unreducedTransitions[i]] in boundaryExceedingTransitions)
             innerScrollNeighbourhood=reduce(int.__or__,(1<<((3*WIDTH+~i if up else i)*WIDTH**di+(3*WIDTH+~2 if up else 2)*WIDTH**(1-di)) for di in range(2) for up in range(2) for i in range(2,3*WIDTH-2)))
     
-    states=generateCellular()
+    states=reducer(boardWidth,symmetryReduction,bitwise)
     def iterateCellular(state,rule,index=False): #index makes it return the state's index in the list (done here due to optimisation for non-symmetry-reduced mode)
         if bitwise:
             if manifold[0]:
@@ -1166,11 +949,11 @@ elif mode==1:
         else:
             iterated=tuple(rule[stateInt([False if k==None else state[k] for k in precomputedKingMoves[i]])] for i in range(boardSquares))
         #print(lap(int.bit_length,tuple(stateDict)));exit()
-        return(((stateDict[symmetry(iterated)] if symmetryReduction else stateInt(iterated)) if index else iterated),( bool(masks&edgeMask)
-                                                                                                                      if bitwise else
-                                                                                                                       (edges and any(b1c and not s[1] and s[0]^s[2] or b1e and s==(False,True,False) or b2c and s==(True,False,True) or b2a and s[1] and s[0]^s[2] or b3i and s==(True,True,True) for s in (manifold[1]==0)*[state[i:i+3] for n in (0,)*(not gutters[2])+(boardSquares-boardWidth,)*(not gutters[3]) for i in range(n,n+boardWidth-2)]+(manifold[0]==0)*[state[i:i+3*boardWidth:boardWidth] for n in (0,)*(not gutters[0])+(boardWidth-1,)*(not gutters[1]) for i in range(n,n+boardSquares-2*boardWidth,boardWidth)]) or
-                                                                                                                        corners and any(state[(x+y*(boardWidth-1))*(boardWidth-1)] and not (gutters[x] and gutters[y+2]) for x in range(2) for y in range(2)) or
-                                                                                                                        nearCorners and any((b1e and s[0]^s[1] or b2a and s==(True,True)) for s in (state[x*(boardWidth-1)+y*(boardSquares-boardWidth):x*(boardWidth-1)+y*(boardSquares-boardWidth)+boardWidth**s*(-1)**(y if s else x):boardWidth**s*(-1)**(y if s else x)] for x in range(2) for y in range(2) for s in range(2) if not gutters[y+2 if s else x]))))) #replace precomputedKingMoves with precomputedKnightMoves if you would like to have some fun
+        return(((stateDict[states.symmetry(iterated)] if symmetryReduction and dictMode else states.index(iterated)) if index else iterated),( bool(masks&edgeMask)
+                                                                                                                                          if bitwise else
+                                                                                                                                           (edges and any(b1c and not s[1] and s[0]^s[2] or b1e and s==(False,True,False) or b2c and s==(True,False,True) or b2a and s[1] and s[0]^s[2] or b3i and s==(True,True,True) for s in (manifold[1]==0)*[state[i:i+3] for n in (0,)*(not gutters[2])+(boardSquares-boardWidth,)*(not gutters[3]) for i in range(n,n+boardWidth-2)]+(manifold[0]==0)*[state[i:i+3*boardWidth:boardWidth] for n in (0,)*(not gutters[0])+(boardWidth-1,)*(not gutters[1]) for i in range(n,n+boardSquares-2*boardWidth,boardWidth)]) or
+                                                                                                                                            corners and any(state[(x+y*(boardWidth-1))*(boardWidth-1)] and not (gutters[x] and gutters[y+2]) for x in range(2) for y in range(2)) or
+                                                                                                                                            nearCorners and any((b1e and s[0]^s[1] or b2a and s==(True,True)) for s in (state[x*(boardWidth-1)+y*(boardSquares-boardWidth):x*(boardWidth-1)+y*(boardSquares-boardWidth)+boardWidth**s*(-1)**(y if s else x):boardWidth**s*(-1)**(y if s else x)] for x in range(2) for y in range(2) for s in range(2) if not gutters[y+2 if s else x]))))) #replace precomputedKingMoves with precomputedKnightMoves if you would like to have some fun
 else:
     def stringBoard(board):
         return((" " if len(board)>10-1 else "").join(str(i) for i,c in enumerate(board,start=1) if c))
@@ -1198,12 +981,13 @@ else:
 correctNumber=(( (((2**boardSquares+2**((boardSquares+1)/2))//2+2**((boardSquares+3)//4))//2+2**((boardSquares+boardWidth)//2))//2
                 if boardWidth%2 else #from https://oeis.org/A054247 (my beloved)
                  ((2**boardSquares+3*2**(boardSquares//2))//2+2**(boardSquares//4)+2**((boardSquares+boardWidth)//2))//4)
-                if symmetryReduction else
-                 2**boardSquares)
+               if symmetryReduction else
+                2**boardSquares)
 print(plural(len(states),"state")+(", "+str(stateChecks.count(True))+(" in check" if mode==0 else " exceeding bounds"))*(mode==0)+((", correct" if len(states)==correctNumber else ", should be "+(str(correctNumber))) if symmetryReduction else ", they will be generated in-place")*(mode!=0)) #boundary exceedings currently computed with state transitions
 
-if mode==0 or symmetryReduction: #not necessary when no symmetry reduction in cellular automata mode due to each state's binary representation being its index
-    stateDict={s:i for i,s in enumerate(states if mode==1 or turnwise else zip(stateTurns,states))}
+dictMode=False
+if mode==0 or mode==1 and symmetryReduction and dictMode: #not necessary when no symmetry reduction in cellular automata mode due to each state's binary representation being its index
+    stateDict={s:i for i,s in enumerate(states[:] if mode or turnwise else zip(stateTurns,states))}
     print("state dict done")
 #print(min((print(i,j,q,s),len(s)) for i,(s,a) in enumerate(zip(states,stateSquareAttacks)) for j,q in enumerate(a)))
 
@@ -1216,7 +1000,7 @@ if mode==0:
     (stateMoves,stateTransitions)=[[() if mt==(None,) else mt for mt in l] for l in zip(*[list(zip(*([(None,)*2] if r==[[]]*boardSquares else [m for q in r for m in q]))) for r in ([[] if q[0]==0 or q[1] else [(m,stateDict[d]) for m,d in ((m,dictInput(s,m)) for m in findPieceMoves(s,i,q,False,True) if s[m[1]][0]==0 or q[1]!=s[m[1]][1]) if (d in stateDict if True else (q[0]!=1 or not a[m[1]][1]))] for i,q in enumerate(s)] for s,a in zip(states,stateSquareAttacks))])] #you can replace "if True" with "if any((j[0] in iterativePieces) for j in d)", if you make it account for the fact that when king is in check, other pieces are unmovable except to obstruct or capture attacking piece
     #replace stateDict with (print(s),print(tuple(tuple(int(j) for j in i) for i in a)),stateDict[d]) for diagnostics
 elif mode==1:
-    (stateTransitions,stateChecks)=zip(*[iterateCellular(s,rule,True) for s in (states if symmetryReduction else map(intState,range(2**boardSquares)))])
+    (stateTransitions,stateChecks)=zip(*[iterateCellular(s,rule,True) for s in states[:]])
 else:
     stateMoves=[[[ess for ess,ss in subsetSums([i for i,si in enumerate(s,start=1) if si]) if ss==di] for di in diceNumbers[d]] for s,d in zip(theStates(),stateDice)] #different tasks call for different conventions
     stateTransitions=[[[de^s for de in di] for di in m] for s,m in enumerate(stateMoves)] #(sum(f<<i for i,f in enumerate(s)) for s in theStates()) #de&1<<i^f<<i=(de>>i&1^f)<<i
@@ -1241,55 +1025,63 @@ print("state parents done,",stateParents.count([]),"orphans") #orphans guarantee
 
 if mode==0:
     def printWinningnesses(): #could be done inline in the regression loop also to be slightly more efficient (though its performance impact is negligible) and to make it tell you as it finds them instead of at the end (which could take hours for large tablebases)
-            def indent(length,num):
-                return(" "*(length+1-len(str(num)))+str(num))
-            def indentPlural(length,num,name,are=False,returnLength=0):
-                hypotheticalString=(("is" if num==1 else "are")+" ")*are+plural(num,name)
-                return(len(hypotheticalString)-len(plural(num,name,includeNum=False)) if returnLength==2 else len(hypotheticalString) if returnLength else (("is" if num==1 else "are"))*are+(returnLength==0)*(length+(num!=1)-len(hypotheticalString))*" "+plural(num,name)+" "*(num==1))
-            if maximumDTM==0:
-                print("you cannot stalemate nor checkmate in any states, you are destined to shuffle pieces about forever")
-            else:
-                '''for i in range(len(states)):
-                    d=[stateWinningnesses.count((w,i)) for w in (range(2) if i%2 else range(0,-2,-1))]
-                    if d==[0]*2:
-                        break
-                    else:'''
-                margins=(max(indentPlural(0,d[0],"stalemate",are=True,returnLength=1) for d in DTMs+[(infinities,0)]),max(indentPlural(0,d[1],"win" if i%2 else "loss",returnLength=2) for i,d in enumerate(DTMs) if d[1]),max(len(plural(d,"win" if i%2 else "loss",includeNum=False)) for i,d in enumerate(DTMs) if d[1]),len(str(maximumDTM)))
-                for i,d in enumerate(DTMs):
-                    print("there "+indentPlural(margins[0],d[0],"stalemate",are=True)+(" and "+indent(margins[1]+margins[2]-1,str(d[1])+indent(margins[2],plural(d[1],"win" if i%2 else "loss",includeNum=False))))*bool(d[1])+" in"+indent(margins[3],i)) #in terms of ply
-                print("there "+indentPlural(margins[0],infinities,"stalemate",are=True)+" in ∞")
-    stateWinningnesses=[(-c,0) if t==() else (0,None) for t,c in zip(stateTransitions,stateChecks)] #0 if drawing, 1 if winning, -1 if losing (like engine evaluations but only polarity (and relative to side to move like Syzygy, not absolute like engines), not magnitude (due to infinite intelligence))
-    winningRegressionCandidates=[i for i,w in enumerate(stateWinningnesses) if w[1]!=None]
+        def indent(length,num):
+            return(" "*(length+1-len(str(num)))+str(num))
+        def indentPlural(length,num,name,are=False,returnLength=0):
+            hypotheticalString=(("is" if num==1 else "are")+" ")*are+plural(num,name)
+            return(len(hypotheticalString)-len(plural(num,name,includeNum=False)) if returnLength==2 else len(hypotheticalString) if returnLength else (("is" if num==1 else "are"))*are+(returnLength==0)*(length+(num!=1)-len(hypotheticalString))*" "+plural(num,name)+" "*(num==1))
+        if maximumDTM==0:
+            print("you cannot stalemate nor checkmate in any states, you are destined to shuffle pieces about forever")
+        else:
+            margins=(max(indentPlural(0,d[0],"stalemate",are=True,returnLength=1) for d in DTMs+[(infinities,0)]),max(indentPlural(0,d[1],"win" if i%2 else "loss",returnLength=2) for i,d in enumerate(DTMs) if d[1]),max(len(plural(d,"win" if i%2 else "loss",includeNum=False)) for i,d in enumerate(DTMs) if d[1]),len(str(maximumDTM)))
+            for i,d in enumerate(DTMs):
+                print("there "+indentPlural(margins[0],d[0],"stalemate",are=True)+(" and "+indent(margins[1]+margins[2]-1,str(d[1])+indent(margins[2],plural(d[1],"win" if i%2 else "loss",includeNum=False))))*bool(d[1])+" in"+indent(margins[3],i)) #in terms of ply
+            print("there "+indentPlural(margins[0],infinities,"stalemate",are=True)+" in ∞")
+    def win(w):
+        return(None!=w>=0 and w%2*2-1)
+    stateWinningnesses=[c-1 if t==() else None for t,c in zip(stateTransitions,stateChecks)] #0 if drawing, 1 if winning, -1 if losing (like engine evaluations but only polarity (and relative to side to move like Syzygy, not absolute like engines), not magnitude (due to infinite intelligence))
+    winningRegressionCandidates=[i for i,w in enumerate(stateWinningnesses) if w!=None]
     #it assumes each position is drawing until it learns otherwise (because infinite loops with insufficient material to forcibly stalemate (and be marked as such by the regression) are draws)
-    #print("state winningnesses:",stateWinningnesses)
+        #print("state winningnesses:",stateWinningnesses)
     #printWinningnesses()
-    DTMs=[tuple(stateWinningnesses.count((i,0)) for i in range(0,-2,-1))]
+    '''for s,w in zip(states,stateWinningnesses):
+        if w[0]==-1:
+            printBoard(s)'''
+    DTMs=[tuple(stateWinningnesses.count(i) for i in range(-1,1))]
     for cycles in range(len(states)): #in case the state transition diagram is a snake
-        if cycles%2==0:
+        if cycles%2:
+            #print("wibble")
+            blitStateWinningnesses=[w if t==() or win(w) else (lambda n:(print(n,opponentWinningness),n)[1])(min(c for c in candidates if None!=c>=0)+1 if opponentWinningness==-1 else (None if (m:=max((c for c in candidates if c!=None),default=None)==None) else m+(-1)**(opponentWinningness==0))) for t,w,(opponentWinningness,candidates) in zip(stateTransitions,stateWinningnesses,((opponentWinningness,(m for m in t if win(m)==opponentWinningness)) for t,opponentWinningness in ((t,min(map(win,t),default=0)) for t in (lap(stateWinningnesses.__getitem__,t) for t in stateTransitions))))]
+            #blitStateWinningnesses=[w if t==() or None!=w>=0 else (max(candidates)+1 if opponentWinningness==1 else None if (m:=min(candidates,default=None)==None) else m+(-1)**(opponentWinningness<0)) for t,w,(opponentWinningness,candidates) in zip(stateTransitions,stateWinningnesses,((opponentWinningness,(m or 0 for m in t if win(m)==opponentWinningness)) for t,opponentWinningness in ((t,min(map(win,t),default=0)) for t in (lap(stateWinningnesses.__getitem__,t) for t in stateTransitions))))] #I considered map(lambda t:lap(stateWinningnesses.__getitem__,t),stateTransitions) but it would break my one rule (no lambdas)
+            winningRegressionCandidates=[i for i,(b,w) in enumerate(zip(blitStateWinningnesses,stateWinningnesses)) if win(b)==1!=win(w)]
+            #print(winningRegressionCandidates)
+            #print([blitStateWinningnesses[w] for w in winningRegressionCandidates])
+            stateChanges=sum(b!=w for b,w in zip(blitStateWinningnesses,stateWinningnesses))
+            #print(stateChanges)
+        else:
             stateChanges=0
             blitStateWinningnesses=list(stateWinningnesses)
-            for i,pa,(w,m) in ((i,stateParents[i],stateWinningnesses[i]) for i in winningRegressionCandidates):
-                for p,(pw,pm) in ((p,blitStateWinningnesses[p]) for p in pa):
-                    if pm==None or -w>pw: #do not add "or (-stateWinningnesses[i][0]==stateWinningnesses[p][0] and stateWinningnesses[i][1]+1<stateWinningnesses[p][1])" because faster forced win sequences to one which is already winning can't be found (due to it being exhaustive) #stateWinningnesses[i][0] cannot be 1 if changed by previous iteration (it must be drawing or losing, making its identicality)
-                        blitStateWinningnesses[p]=(-w,m+1)
+            for i,pa,m in ((i,stateParents[i],stateWinningnesses[i]) for i in winningRegressionCandidates):
+                for p,pm in ((p,blitStateWinningnesses[p]) for p in pa):
+                    if pm==None or -win(m)>win(pm): #do not add checking for faster forced win sequences for already winning positions, it guarantees there are none
+                        blitStateWinningnesses[p]=m+(-1)**(m<0)
                         stateChanges+=1
-        else:
-            blitStateWinningnesses=[w if t==() or w[0]!=0 else (-opponentWinningness,(max(candidates)+1 if opponentWinningness==1 else (None if (m:=min(candidates,default=None)==None) else m+1))) for t,w,(opponentWinningness,candidates) in zip(stateTransitions,stateWinningnesses,((opponentWinningness,(m for w,m in t if w==opponentWinningness and m!=None)) for t,opponentWinningness in ((t,min((w[0] for w in t),default=0)) for t in (lap(stateWinningnesses.__getitem__,t) for t in stateTransitions))))] #I considered map(lambda t:lap(stateWinningnesses.__getitem__,t),stateTransitions) but it would break my one rule (no lambdas)
-            winningRegressionCandidates=[i for i,(b,w) in enumerate(zip(blitStateWinningnesses,stateWinningnesses)) if b[0]==-1!=w[0]]
-            stateChanges=sum(b[0]!=w[0] for b,w in zip(blitStateWinningnesses,stateWinningnesses))
-        newDTMs=tuple(sum(b[0]==i!=w[0] for b,w in zip(blitStateWinningnesses,stateWinningnesses)) for i in (range(2) if cycles%2==0 else range(0,-2,-1)))
+        '''print("wibble")
+        for s,b,w in zip(states,blitStateWinningnesses,stateWinningnesses):
+            if b!=w:
+                print(w,b)
+                printBoard(s)'''
+        newDTMs=tuple(sum((None!=b>=0)==i!=(None!=w>=0) for b,w in zip(blitStateWinningnesses,stateWinningnesses)) for i in range(2))
         #print(stateChanges,"states changed on cycle",cycles)
         stateWinningnesses=blitStateWinningnesses
-        #print("new state winningnesses:",stateWinningnesses)
-        #printWinningnesses()
         if stateChanges==0:
             break
         else:
             DTMs.append(newDTMs)
-    infinities=stateWinningnesses.count((0,None))
+    infinities=stateWinningnesses.count(None)
     maximumDTM=len(DTMs)-1
     if guiMenuMode:
-        maxima=(max(d[0] for d in DTMs+[(infinities,0)]),max(d[1] for d in DTMs),max(len(plural(d,"win" if i%2 else "loss",includeNum=False)) for i,d in enumerate(DTMs) if d[1]))
+        maxima=((max(d[0] for d in DTMs+[(infinities,0)]),max(d[1] for d in DTMs),(max(len(plural(d,"win" if i%2 else "loss",includeNum=False)) for i,d in enumerate(DTMs) if d[1]) if any(d[1] for d in DTMs) else 0)))
         run=True
         rememberedPerceived=perceivedToMove=False
         actualDemoState=demoState
@@ -1303,17 +1095,18 @@ if mode==0:
                 demoWinningness=stateWinningnesses[stateDict[symmetry(actualDemoState)]]
                 rememberedPerceived=perceivedToMove
             for i,d in enumerate(DTMs):
-                drawShape((size[0]*d[0]/maxima[0]//4,size[1]//len(DTMs)),(size[0]*(3-d[0]/maxima[0])//4,size[1]//len(DTMs)*i),colours[5 if demoWinningness==(0,i) else 2],0)
-                drawShape((size[1]*d[1]/maxima[1]//4,size[1]//len(DTMs)),(size[0]*3//4,size[1]//len(DTMs)*i),colours[5 if demoWinningness==((-1)**(i+1),i) else 1-i%2],0)
+                if maxima[0]:
+                    drawShape((size[0]*d[0]/maxima[0]//4,size[1]//len(DTMs)),(size[0]*(3-d[0]/maxima[0])//4,size[1]//len(DTMs)*i),colours[5 if demoWinningness==~i else 2],0)
+                if maxima[1]:
+                    drawShape((size[1]*d[1]/maxima[1]//4,size[1]//len(DTMs)),(size[0]*3//4,size[1]//len(DTMs)*i),colours[5 if demoWinningness==i else 1-i%2],0)
             renderBoard(demoState,[],False,renderSize,((size[0]//2-renderSize//2)*(size[1]*5//4>=size[0]),size[1]-renderSize*(boardWidth+1)//boardWidth))
         run=True
         while run:
             doEvents()
-            pygamePrint("What is your choice, son of Man",(size[0]//2,size[1]//8),16,colour=(0,)*3,button=True)
+            pygamePrint("What is your choice, son of Man",(size[0]//2,size[1]//8),16)
             decision=(pygamePrint("play chess with God",(size[0]//4,size[1]//2),16,button=True)<<1|pygamePrint("view state transition diagram",(size[0]//4*3,size[1]//2),16,button=True))
             run=not(decision)
         decision-=1
-        print(decision)
     else:
         printWinningnesses()
 elif mode==1:
@@ -1347,7 +1140,6 @@ elif mode==1:
             j=stateTransitions[j]
         else:
             collision=jLoop.index(j)
-            jLoopLength=len(jLoop)-collision
             for j in jLoop:
                 stateSearchednesses[j]=True
             jLoop=jLoop[collision:]
@@ -1422,19 +1214,18 @@ else:
     while cycles==0 or statesChanged!=0:
         statesChanged=0
         for i,(s,d,m,t,w) in enumerate(zip(theStates(),(diceNumbers[d] for d in stateDice),stateMoves,stateTransitions,stateWinningnesses)):
-            for ii,(di,mi,ti) in enumerate(zip(d,m,t)):
-                for iii,(mii,tii) in enumerate(zip(mi,ti)):
+            for ii,ti in enumerate(t):
+                for iii,tii in enumerate(ti):
                     if stateMoveWinningnesses[i][ii][iii]==None and stateWinningnesses[tii]!=None:
                         stateMoveWinningnesses[i][ii][iii]=stateWinningnesses[tii] if consecutiveTurns else invert(stateWinningnesses[tii])
-                        #print(s,di,mii,tii)
             if w==None and not any(None in w for w in stateMoveWinningnesses[i]):
                 #print(statesChanged)
                 #print(stateMoveWinningnesses[i])
                 stateWinningnesses[i]=weightedFractionAverage(diceProbabilities[dice(s)-1],stateMoveWinningnesses[i])
                 statesChanged+=1
         cycles+=1
-    print(cycles)
-    print(stateWinningnesses[-1])
+    #print(cycles)
+    #print(stateWinningnesses[-1])
 
 def compoundFlipping(a,b,reverses=[False]*2): #applies flipping a then b to [0,0,0], returns resultant flipping tuple
     bee=a[2]^(b[2] and reverses[1]) #bee
@@ -1480,23 +1271,38 @@ if (mode==0 or mode==2) and (decision if guiMenuMode else input("Would you like 
         def isOptimal(i):
             #print(stateWinningnesses[i],stateWinningnesses[currentIndex])
             #print(stateWinningnesses[i],(-stateWinningnesses[currentIndex][0],stateWinningnesses[currentIndex][1]-1))
-            return stateWinningnesses[i][0]==0 if stateWinningnesses[currentIndex][1]==None else stateWinningnesses[i]==(-stateWinningnesses[currentIndex][0],stateWinningnesses[currentIndex][1]-1)
+            return stateWinningnesses[i]<0 if stateWinningnesses[currentIndex]==None else stateWinningnesses[i]==(stateWinningnesses[currentIndex]-sgn(stateWinningnesses[currentIndex]))
         guiMode=(guiMenuMode or input("Would you like a GUI? (y/n)")=="y")
         if guiMode:
             import pygame
             from pygame.locals import *
-            initialisePygame(True)
+            if not guiMenuMode:
+                initialisePygame(True)
             selectedSquare=-1
             clickedSquare=-1
             selectedness=False
+        plays=0
+        decision=0
+        longests=tuple(i for i,w in enumerate(stateWinningnesses) if w==maximumDTM)
         while run:
-            if maximumDTM and longestMode>=0:
-                longestMode=(input("Would you like to play the longest checkmate sequence (l), a random one (r) or stop being pestered (s)?"))
-                longests=tuple(i for i,w in enumerate(stateWinningnesses) if w==((-1)**(maximumDTM+1),maximumDTM))
-                longestMode=(1 if longestMode=="l" else -1 if longestMode=="s" else 0)
+            if maximumDTM and decision>=0:
+                if guiMenuMode:
+                    if plays:
+                        run=True
+                        while run:
+                            doEvents()
+                            pygamePrint("The game is over, what would you like to do now",(size[0]//2,size[1]//8),16,colour=(0,)*3,button=True)
+                            decision=(pygamePrint("play from the original position again",(size[0]//4,size[1]//2),16,button=True)*3|pygamePrint("longest sequence",(size[0]//2,size[1]//2),16,button=True)*2|pygamePrint("random",(size[0]//4*3,size[1]//2),16,button=True)*1|pygamePrint("random and stop pestering me",(size[0]//4*3,size[1]//4*3),16,button=True)*-1)
+                            run=not(decision)
+                        decision-=1
+                    else:
+                        decision=2
+                else:
+                    decision=(input("Would you like to play the longest checkmate sequence (l), a random one (r) or stop being pestered (s)?"))
+                    decision=(1 if decision=="l" else -1 if decision=="s" else 0)
             else:
-                longestMode=-1
-            currentIndex=(random.choice(longests) if longestMode>0 else random.randrange(len(states)))
+                decision=-1
+            currentIndex=(stateDict[symmetry(demoState)] if decision==2 else random.choice(longests) if decision>0 else random.randrange(len(states)))
             boardFlipping=[0]*3
             humanColour=0 if turnwise else stateTurns[currentIndex] #it includes a u because this is a British program (property of her majesty)
             turn=True
@@ -1511,7 +1317,7 @@ if (mode==0 or mode==2) and (decision if guiMenuMode else input("Would you like 
                     break
                 elif turn==humanColour:
                     thisStateMoves=stateMoves[currentIndex]
-                    apparentMoves=[[compoundPositionReflect(j,boardFlipping) for j in i] for i in thisStateMoves]
+                    apparentMoves=[[compoundPositionReflect(j,boardFlipping,True) for j in i] for i in thisStateMoves]
                     print(thisStateMoves)
                     print(apparentMoves,boardFlipping)
                     if guiMode:
@@ -1544,13 +1350,14 @@ if (mode==0 or mode==2) and (decision if guiMenuMode else input("Would you like 
                     boardFlipping=compoundFlipping(reflections,boardFlipping,[True,False])
                     print(boardFlipping)
                 else:
-                    print(stateWinningnesses[currentIndex],[stateWinningnesses[i] for i in stateTransitions[currentIndex]])
+                    print(stateWinningnesses[currentIndex],lap(stateWinningnesses.__getitem__,stateTransitions[currentIndex]))
                     tablebaseMoves=[i for i,j in enumerate(stateTransitions[currentIndex]) if isOptimal(j)]
                     #print(stateWinningnesses[currentIndex])
-                    print("state "+str(currentIndex)+", I play",("the" if len(tablebaseMoves)==1 else "one of "+str(len(tablebaseMoves))),"optimal",str(("losing","drawing","winning")[stateWinningnesses[currentIndex][0]+1]),"move"+"s"*(len(tablebaseMoves)!=1)+".")
+                    print("state "+str(currentIndex)+", I play",("the" if len(tablebaseMoves)==1 else "one of "+str(len(tablebaseMoves))),"optimal",str(("losing","drawing","winning")[(stateWinningnesses[currentIndex]%2*2+1)*(stateWinningnesses[currentIndex]>=0)+1]),"move"+"s"*(len(tablebaseMoves)!=1)+".")
                     godMove=random.choice(tablebaseMoves)
                     parsedMove=stateMoves[currentIndex][godMove]
                     currentIndex=stateTransitions[currentIndex][godMove]
+            plays+=1
         else: exit()
     else:
         def rollDice(diceIndex):
@@ -1577,6 +1384,8 @@ if (mode==0 or mode==2) and (decision if guiMenuMode else input("Would you like 
                         break
         else: exit()
 else:
+    if mode==1:
+        states=tuple(states[:])
     if stateCount>512:
         input(plural(stateCount,"state")+", will be slow")
     import pygame
@@ -1585,8 +1394,8 @@ else:
     rad=halfSize[0]/stateCount
     #bitColours=[[int(255*(math.cos((j/n-i/3)*2*math.pi)+1)/2) for i in range(3)] for j in range(n)]
     nodes=[[[[i*rad]+halfSize[1:],[0]+[random.random()/2**8 for di in range(dims-1)]],(rad,)*2, 1, ((colours[2 if t==Tralse else 3 if t==Fruse else 4 if t==Trulse else t],
-                                                                                                     colours[8+w[0]],
-                                                                                                     (63,63,63) if w[0]==0 else weightedAverageColours((w[1],(63,63,63)),(maximumDTM-w[1],angleColour(math.pi*(w[0]-1)/-2))),
+                                                                                                     colours[8+win(w)],
+                                                                                                     (63,63,63) if win(w)==0 else weightedAverageColours((w,(63,63,63)),(maximumDTM-win(w),angleColour(math.pi*(win(w)-1)/-2))),
                                                                                                      weightedAverageColours((boardWidth/math.sqrt(2)-math.hypot(*s),(63,63,63)),(math.hypot(*s),angleColour(math.atan2(*s)))))
                                                                                                     if mode==0 else ((127,127,127),)*2)] for i,(s,w,t) in enumerate(zip((([i-boardWidth/(4 if manifold==(1,1) and transitivityReduction else 2)+1/2 for i in moddiv(s.index((1,1) if manifold==(1,1) and transitivityReduction else (1,0)),boardWidth)] if mode==0 else [0,0]) for s in theStates()),*((stateWinningnesses,stateTurns) if mode==0 else (range(stateCount),)*2)))] #sorry for inelegance but iterator variables can't be forgone in list comprehensions
     #each formatted [position,size,mass,colours]
@@ -1749,7 +1558,7 @@ else:
         for i,(sc,k,n) in enumerate(zip(nodeScreenPositions,stateTransitions,nodes)):
             if mode==0:
                 for l in k:
-                    drawLine(sc[:2],(average(sc[:2],nodeScreenPositions[l][:2]) if halfConnectionMode else nodeScreenPositions[l][:2]),(colours[9+~stateWinningnesses[l][0]] if colourMode==1 else n[3][colourMode]))
+                    drawLine(sc[:2],(average(sc[:2],nodeScreenPositions[l][:2]) if halfConnectionMode else nodeScreenPositions[l][:2]),(colours[10-win(stateWinningnesses[l])] if colourMode==1 else n[3][colourMode]))
             elif mode==2:
                 for j,l in enumerate(k):
                     for m in l:

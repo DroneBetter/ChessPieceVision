@@ -155,37 +155,36 @@ class reducer:
             return(stateIndex)
         else:
             return(reduce(int.__or__,(1<<i&s for i,s in enumerate(state))))
-    def getter(self,ind):
-        if self.symmetryReduction:
-            layerNumbers=[0 for l in range(len(layerTypes))]
-            newReflections=reflections=(1<<8)-1
-            stateIndex=0
-            for l,t in enumerate(layerTypes):
-                for n in range(2**self.typeLengths[t]):
-                    m=min(p for i,p in enumerate(self.instanceReflectionPriorities[t][n]) if reflections>>i&1)
-                    if self.instanceReflectionPriorities[t][n][0]==m: #legal
-                        newReflections=reflections&self.ORsum((p==m)<<i for i,p in enumerate(self.instanceReflectionPriorities[t][n]))
-                        nextIndex=stateIndex+self.polya(l,newReflections)
-                        layerNumbers[l]=n
-                        if nextIndex>ind:
-                            break
-                        else:
-                            stateIndex=nextIndex
-                if stateIndex==ind:
-                    break
-                reflections=newReflections
-            return(self.constructCellular(layerNumbers))
-        else:
-            return(self.intState(ind))
     def __getitem__(self,ind):
         if type(ind)==slice:
             ind=ind.indices(len(self))
             if ind[2]!=1:
                 raise(ValueError("you WILL NOT use increments other than 1"))
-            return(self.generateCellular(self.getter(ind[0]),ind)) #used because including yield statements in the __getitem__ function itself will cause the return statement (for integer indexes) not to work and for it to be interpreted as generator
+            return(self.generateCellular(self[ind[0]],ind)) #used because including yield statements in the __getitem__ function itself will cause the return statement (for integer indexes) not to work and for it to be interpreted as generator
         else:
-            return(self.getter(ind))
+            if self.symmetryReduction:
+                layerNumbers=[0 for l in range(len(layerTypes))]
+                newReflections=reflections=(1<<8)-1
+                stateIndex=0
+                for l,t in enumerate(layerTypes):
+                    for n in range(2**self.typeLengths[t]):
+                        m=min(p for i,p in enumerate(self.instanceReflectionPriorities[t][n]) if reflections>>i&1)
+                        if self.instanceReflectionPriorities[t][n][0]==m: #legal
+                            newReflections=reflections&self.ORsum((p==m)<<i for i,p in enumerate(self.instanceReflectionPriorities[t][n]))
+                            nextIndex=stateIndex+self.polya(l,newReflections)
+                            layerNumbers[l]=n
+                            if nextIndex>ind:
+                                break
+                            else:
+                                stateIndex=nextIndex
+                    if stateIndex==ind:
+                        break
+                    reflections=newReflections
+                return(self.constructCellular(layerNumbers))
+            else:
+                return(self.intState(ind))
     __len__=(lambda self: self.length)
+    __iter__=(lambda self: self[0:len(self)])
     def __init__(self,boardWidth,reduction=True,bitwise=True,cellWidth=4,cellHeight=1,OT=True,byteINT=True):
         self.bitwise=bitwise;self.cellWidth=cellWidth;self.cellHeight=cellHeight;self.cellBits=cellWidth*cellHeight;self.OT=OT;self.byteINT=byteINT
         self.symmetryReduction=reduction
@@ -208,13 +207,13 @@ class reducer:
                                                                               position))) #some are probably reducible further (depending on whether floor division or modulo is more efficient, but also probably regardless)
         self.shift=(lambda i: '>>'+str(i) if i>0 else '' if i==0 else '<<'+str(-i))
         self.boardReflect=eval("lambda board,axis: board if axis==-1 else "+( ''.join('|'.join(f)+(' if axis=='+str(i)+' else ')*(i!=2) for i,f in enumerate((("(board&"+str(self.lastColumn<<self.cellWidth*i)+')'+self.shift(self.cellWidth*(i-(self.WIDTH+~i))) for i in range(self.WIDTH)),
-                                                                                                                                                         ("(board&"+str(self.lastRow<<self.COLSHIFT*i)+')'+self.shift(self.COLSHIFT*(i-(self.HEIGHT+~i))) for i in range(self.HEIGHT)),
-                                                                                                                                                         ("(board&"+str(self.ORsum(1<<self.cellWidth*(i+(self.WIDTH+1)*j)&self.lastRow<<self.COLSHIFT*j for j in range(self.WIDTH) if i+(self.WIDTH+1)*j>0))+')'+self.shift(self.cellWidth*(-i*(self.WIDTH-1))) for i in range(1-self.WIDTH,self.WIDTH))))) #inelegant but only runs once :-)
-                                                                                                                                                         #("(board&"+str((lambda x: (x,self.print(x))[0])(self.ORsum(1<<self.cellWidth*(i+self.WIDTH+(self.WIDTH-1)*j)&self.lastRow<<self.COLSHIFT*j for j in range(self.WIDTH) if i>(1-self.WIDTH)*j)))+')'+self.shift(self.cellWidth*(i*(self.WIDTH+1)+1)) for i in range(1-self.WIDTH,self.WIDTH)))))) #original accidental y=WIDTH+~x version (could be used if I am one day no longer too lazy to make closed forms for each compoundReflect)
+                                                                                                                                                 ("(board&"+str(self.lastRow<<self.COLSHIFT*i)+')'+self.shift(self.COLSHIFT*(i-(self.HEIGHT+~i))) for i in range(self.HEIGHT)),
+                                                                                                                                                 ("(board&"+str(self.ORsum(1<<self.cellWidth*(i+(self.WIDTH+1)*j)&self.lastRow<<self.COLSHIFT*j for j in range(self.WIDTH) if i+(self.WIDTH+1)*j>0))+')'+self.shift(self.cellWidth*(-i*(self.WIDTH-1))) for i in range(1-self.WIDTH,self.WIDTH))))) #inelegant but only runs once :-)
+                                                                                                                                                 #("(board&"+str((lambda x: (x,self.print(x))[0])(self.ORsum(1<<self.cellWidth*(i+self.WIDTH+(self.WIDTH-1)*j)&self.lastRow<<self.COLSHIFT*j for j in range(self.WIDTH) if i>(1-self.WIDTH)*j)))+')'+self.shift(self.cellWidth*(i*(self.WIDTH+1)+1)) for i in range(1-self.WIDTH,self.WIDTH)))))) #original accidental y=WIDTH+~x version (could be used if I am one day no longer too lazy to make closed forms for each compoundReflect)
                                                                         if self.bitwise else
                                                                          ''.join('('+','.join('board['+str(j)+']' for j in l)+')'+(' if axis=='+str(i)+' else ')*(i!=2) for i,l in enumerate(((x for y in range(boardWidth) for x in range((y+1)*boardWidth-1,y*boardWidth-1,-1)),
-                                                                                                                                                                                              (x for y in range(boardWidth,0,-1) for x in range((y-1)*boardWidth,y*boardWidth)),
-                                                                                                                                                                                              (x for y in range(boardWidth) for x in range(y,y+boardSquares,boardWidth)))))))
+                                                                                                                                                                                      (x for y in range(boardWidth,0,-1) for x in range((y-1)*boardWidth,y*boardWidth)),
+                                                                                                                                                                                      (x for y in range(boardWidth) for x in range(y,y+boardSquares,boardWidth)))))))
         self.compoundReflect=(lambda board,axes: reduce(self.boardReflect,(i for i,a in enumerate(axes) if a),board))#((lambda board,axes: board if axes==(0,0,0) else reduce(self.boardReflect,(i for i,a in enumerate(axes) if a),board)) if self.bitwise else eval("lambda board,axes: "+''.join('('+','.join("board["+str(x)+']' for y in self.conditionalReverse(axes[not axes[2]],range(boardWidth)) for x in self.conditionalReverse(axes[axes[2]],(range(y,y+boardSquares,boardWidth) if axes[2] else range(y*boardWidth,(y+1)*boardWidth))))+')'+(' if axes==('+','.join(map(str,axes))+') else')*(i!=7) for i,axes in ((i,tuple(i>>j&1 for j in range(3))) for i in range(8)))))
         self.intState=(lambda state: self.ORsum((state&1<<i)<<(self.BIAS+i%boardWidth*self.cellWidth+i//boardWidth*self.COLSHIFT-i) for i in range(boardSquares)) if self.bitwise else tuple(bool(state>>i&1) for i in range(boardSquares)))
         self.niemiec=True

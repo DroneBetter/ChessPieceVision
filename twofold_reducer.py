@@ -114,11 +114,13 @@ if __name__=='__main__':
                                         'p&(q|r)',  'p^~(q|r)',    'p&q^q&r^r',  'p&r|p^~q',    '(p^q)&r^q',  'p&q|p^~r',    'p&q&r^q^r',  'p^~q|q^r',      'p&q|(p|q)&r',  'p^p&q&r^q^~r',  'p&q|r',       'p^~q|r',        'p&r|q',       'p^~r|q',        'q|r',          '~p|q|r',               
                                         'p',        'p|~(q|r)',    'p|~q&r',     'p|~q',        'p|q&~r',     'p|~r',        'p|q^r',      'p|~q|~r',       'p|q&r',        'p|q^~r',        'p|r',         'p|~q|r',        'p|q',         'p|q|~r',        'p|q|r',        '-1')) #transcribed from https://www.wolframscience.com/nks/notes-3-2--rule-expressions-for-cellular-automata/ and deliberately only brackets reduced by precedence (you wouldn't steal a logic gate configuration)
     #print(all(starmap(lambda i,w: ORsum(map(lambda i: (w(i>>2,i>>1&1,i&1)&1)<<i,range(8)))==i,enumerate(wolfram))))
-    rule=int(input('rule '))
+    rule=150
     boundaries=0 #left and right fixed edges
-    cut=True #takes linear space this way, to avoid quadratic time
-    fast=2+(rule==150)
+    cut=True #takes linear space this way, to avoid running over high-period oscillators too many times
     symmetry=(lambda r: ~(r|r>>2&1)&1)(rule>>1^rule>>4) #~((rule>>1^rule>>4)|(rule>>3^rule>>6))&1
+    hybrid=True #do not use symmetry-reduced indexing methods (only twofold.__iter__)
+    reduction=True #reduce state by symmetry but do not use optimal-space searcheds list
+    fast=2#+(rule==150)
     fun=wolfram[rule]
     wr=(lambda s: fun(s>>1|boundaries>>1<<w-1,s,s<<1|boundaries&1)&mask)
     canon=(lambda p: min(map(f.symmetry,p)))
@@ -126,13 +128,14 @@ if __name__=='__main__':
     allPeriods=set()
     iterations=0
     yujh=(lambda s: '     o\n    o o\n    '+' o'[s&1]+'o o\n'+'\n'.join(map(lambda i: ' '*i+' o'[bool(i)]+' o'+' o'[s>>i&1]+(' '+' o'[s>>i+1&1]+'o'+' o'*(i<w-3))*(i<w-2),range(w)))+'\n'+' '*w+'o' if w>1 else ':-(') #b34kz5e7c8s23-a4ityz5k :-)
-    for w in range(1,8):
+    yujhMode=False
+    for w in range(1,20):
         isotropic=(symmetry and w>2) #otherwise layer requires negative shift
         mask=(1<<w)-1
-        print('width',w)
+        #print('width',w)
         n=1<<16
         f=twofold(w,isotropic)
-        if cut: searcheds=[False for _ in range(len(f))]
+        if cut: searcheds=[False for _ in range(1<<w if hybrid else len(f))]
         finals=set()
         t=time()
         for i,s in enumerate(f):
@@ -140,24 +143,27 @@ if __name__=='__main__':
                 print((lambda t: str(i)+'/'+str(len(f))+' ('+str(100*i//len(f))+'%) in '+str(int(t*1000)/1000)+'s, '+str(int(n//t))+' soups/s, '+str(int((len(f)-i)*t)//n)+'s remaining')(time()-t))
                 t=time()
             past=[]
-            state=s
-            while not(state in past or (cut and searcheds[i])):
-                past.append(state)
+            while not(cut and searcheds[s if hybrid else i] or s in past):
+                past.append(s)
                 iterations+=1
-                state=wr(state)
-                if cut:
-                    searcheds[i]=True
-                    i=f.index(state)
-                #print(f.strate(state))
-            if state in past:
-                p=len(past)-past.index(state)
+                if cut and hybrid:
+                    searcheds[s]=True
+                s=wr(s)
+                if reduction or cut and not hybrid:
+                    s=f.symmetry(s)
+                    if cut and not hybrid:
+                        searcheds[i]=True
+                        i=f.index(s,sym=False)
+                #print(f.strate(s))
+            if s in past:
+                p=len(past)-past.index(s)
                 a=(p if fast else (p,canon(past[-p:])))
                 if a not in finals:
                     if 1<=fast<3:
                         print(f.strate(canon(past[-p:]))+'|'+str(a))
                     finals.add(a)
                 if p not in allPeriods:
-                    if rule==150:
+                    if rule==150 and yujhMode:
                         print('p'+str(p))
                         print(yujh(canon(past[-p:])))
                     allPeriods.add(p)
@@ -174,4 +180,5 @@ if __name__=='__main__':
                         for i in range(p):
                             print(f.strate(s))
                             s=wr(s)
+    print(iterations,'iterations')
     print('\n'.join(map(str,periods)))
